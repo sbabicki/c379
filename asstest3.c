@@ -280,9 +280,7 @@ void *saucers(void *properties){
 
 void *replace_thread(){
 	
-	void **retval;
-	void *retval2;
-	
+	void *retval;
 	
 	while(1){
 
@@ -293,7 +291,7 @@ void *replace_thread(){
 	mvprintw(8, 0, "first checkpoint, ");
 	refresh();
 	
-	//pthread_join(thrds[replace_index], retval);
+	pthread_join(thrds[replace_index], &retval);
 	
 	mvprintw(9, 0, "second checkpoint");
 	refresh();
