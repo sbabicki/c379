@@ -16,11 +16,23 @@
 #include <unistd.h>
 #include <string.h>
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 /* limit of number of rows with saucers */
 #define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 1
+#define	NUMSAUCERS 3
+
+/* the maximum number of saucers at one time */
+#define MAXSAUCERS 20
+
+/* the maximum number of shot threads */
+#define MAXSHOTS 100
+
+/* higher number = less likely to have random saucers appear */
+#define RANDSAUCERS 20
 
 /* limit of number of shots allowed */
 #define NUMSHOTS 5
@@ -35,6 +47,7 @@ struct saucerprop{
 	int end;	/* +1 or -1 */
 	int hit;	/* -1 if not hit, +1 if hit */
 	int thrdnum;	/* element # from thrd array for canceling thread */
+	pthread_t *element;
 };
 
 struct shotprop{
@@ -42,22 +55,31 @@ struct shotprop{
 	int row;
 	int num;	/* what number shot */
 };
+
+//struct rlimit {
+  //           rlim_t rlim_cur;  /* Soft limit */
+    //         rlim_t rlim_max;  /* Hard limit (ceiling for rlim_cur) */
+//};
 		
+int escape_update = 0;
+int rockets_update = NUMSHOTS;
+int score_update = 0;
 
 /* static mutex with default attributes */
 pthread_mutex_t mx = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t escape = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t score = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int ac, char *av[])
 {
 	int i, c;
 	
 	/* stores the threads */
-	pthread_t thrds[NUMSAUCERS+10];
+	pthread_t thrds[MAXSAUCERS];
 
 	/* for storing the properties of saucers and shots */
-	struct saucerprop saucerinfo[NUMSAUCERS+10];
+	struct saucerprop saucerinfo[MAXSAUCERS];
 	struct shotprop shotinfo[NUMSHOTS];
+	struct rlimit rlim;
 
 	/* arrays for saucers and shots */
 	char *saucerarray[NUMSAUCERS];
@@ -79,6 +101,14 @@ int main(int ac, char *av[])
 		exit(1);
 	}
 	
+	/* make sure the system allows enough processes to play the game */
+	getrlimit(RLIMIT_NPROC, &rlim);
+	if (rlim.rlim_cur < MAXSAUCERS + MAXSHOTS){
+		fprintf(stderr,
+		"Your system does not allow enough processes for this game\n");
+		exit(1);
+	}
+	
 	/* set up curses */
 	initscr();
 	crmode();
@@ -86,7 +116,7 @@ int main(int ac, char *av[])
 	clear();
 	
 	/* print message with info about the game @ the bottom of the page */
-	stats(0, NUMSHOTS, 0);
+	stats();
 
 	/* fill the saucer array with <---> strings */
 	for(i=0; i<NUMSAUCERS; i++){
@@ -95,7 +125,7 @@ int main(int ac, char *av[])
 	//mvprintw(i+5,0,"%s", saucerarray[i]);
 
 	/* populate the array of saucerprop structs */
-	numsaucers = setup(NUMSAUCERS, saucerarray, saucerinfo);
+	numsaucers = setup(NUMSAUCERS, saucerarray, saucerinfo, thrds);
 
 	/* create a thread for each saucer */
 	for(i=0; i<numsaucers; i++){
@@ -105,7 +135,7 @@ int main(int ac, char *av[])
 			/* if thread is not created exit */
 			fprintf(stderr,"error creating thread");
 			endwin();
-			exit(0);
+			exit(-1);
 		}
 	}
 	
@@ -114,9 +144,15 @@ int main(int ac, char *av[])
 		
 		/* Add more saucers at random */
 		/* The more shots taken, the more saucers added */
-		if(rand()%20 == 0 && numsaucers < NUMSAUCERS+9){
+		if(rand()%RANDSAUCERS == 0 && numsaucers < MAXSAUCERS){
 			numsaucers = more_saucers(numsaucers, thrds, saucerinfo);
 		}
+		
+		////////////////////
+	//	mvprintw(6, 0, "address %d", &thrds[0]);
+	//	mvprintw(7, 0, "thread id %d", thrds[numsaucers-1]);
+	//	refresh();
+		
 		
 		/* read character from input and store in variable c */
 		c = getch();
@@ -157,7 +193,7 @@ int main(int ac, char *av[])
  * requires the number of strings to include, an array of the strings, and the array of structs to populate
  * returns the number of strings in the struct
  */
-int setup(int nstrings, char *strings[], struct saucerprop saucerinfo[])
+int setup(int nstrings, char *strings[], struct saucerprop saucerinfo[], void *th)
 {
 	int numsaucers = ( nstrings > NUMSAUCERS ? NUMSAUCERS : nstrings );
 	int i;
@@ -170,6 +206,7 @@ int setup(int nstrings, char *strings[], struct saucerprop saucerinfo[])
 		saucerinfo[i].delay = 1+(rand()%15);	/* a speed */
 		saucerinfo[i].end = 1;	/* moving right */
 		saucerinfo[i].thrdnum = i;
+		saucerinfo[i].element = &th[i];
 	}
 
 	/* set up curses 
@@ -234,8 +271,21 @@ void *saucers(void *properties)
 			
 			/* now the string is off the page, exit the thread */
 			if(len2 < 0){
+			//	mvprintw(9, 0, "%d", info->thrdnum);
+			//	mvprintw(10, 0, "%d", info->element);
+				/* update the score now that a saucer escaped */
+				pthread_mutex_lock(&score);
+				
+				escape_update ++;
+				stats();
+				
+				pthread_mutex_unlock(&score);
+				
 				index = info->thrdnum;
+				
+				more_saucers(info->thrdnum, info->element, info);
 				pthread_exit(retval);
+				//mvprintw(16, 0, "STILL ALIVEEEEEE");
 			}
 		}	
 	}
@@ -247,16 +297,23 @@ void *saucers(void *properties)
  * returns the updated number of saucers
  */
 int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
-
+	sleep(2);
+	mvprintw(num+5, 0, "MORE , num %d, address %d", num, thrds);
+	
+	refresh();
+	pthread_mutex_lock(&mx);
 	/* srand(getpid()); */
 	saucerinfo[num].str = "<-.->";	/* <---> */
 	saucerinfo[num].row = num%NUMROW;	/* the row */
 	saucerinfo[num].delay = 1+(rand()%15);	/* a speed */
 	saucerinfo[num].end = 1;	/* moving right */
 	saucerinfo[num].thrdnum = num;
+	saucerinfo[num].element = thrds;
+	num ++;	
+	pthread_mutex_unlock(&mx);
 
 	/* once each thread is created it calls and stays in the saucers function */
-	if (pthread_create(&thrds[num], NULL, saucers, &saucerinfo[num])){
+	if (pthread_create(thrds, NULL, saucers, &saucerinfo[num])){
 			
 		/* if thread is not created exit */
 		fprintf(stderr,"error creating thread");
@@ -265,8 +322,9 @@ int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
 	}
 	
 	/* return the new number of saucers */
-	num ++;	
+	
 	return num;
+	
 	
 }
 
@@ -277,8 +335,9 @@ void *shots(void *properties){
 /* 
  * stats prints the number of rockets left and number of missed saucers to the screen
 */
-void stats(int score, int rockets, int saucers){
+void stats( ){
 		
 	/* print message at bottom of the screen */
-	mvprintw(LINES-1,0,"score:%d, rockets remaining: %d, escaped saucers: %d", score, rockets, saucers);
+	mvprintw(LINES-1,0,"score:%d, rockets remaining: %d, escaped saucers: %d", score_update, rockets_update, escape_update);
+	refresh();
 }
