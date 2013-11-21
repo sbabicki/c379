@@ -23,7 +23,7 @@
 #define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 3
+#define	NUMSAUCERS 2
 
 /* the maximum number of saucers at one time */
 #define MAXSAUCERS 20
@@ -149,6 +149,11 @@ int main(int ac, char *av[]){
 		/* The more shots taken, the more saucers added */
 		if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
 			setup_saucer(nsaucers);
+			if (pthread_create(&thrds[nsaucers], NULL, saucers, &saucerinfo[nsaucers])){
+				fprintf(stderr,"error creating saucer thread");
+				endwin();
+				exit(-1);
+			}
 			nsaucers ++;
 		}
 		
@@ -214,8 +219,8 @@ void *saucers(void *properties){
 	
 	struct saucerprop *info = properties;	/* point to properties info for the saucer */
 	int len = strlen(info->str) + 2;	/* size of the saucer +2 (for padding) */
-/*for testing only*/	int col = 0;	
-//int col = -1*rand()%(COLS-len-3);	/* random column to start at */
+/*for testing only*/	//int col = 0;	
+	int col = -1*rand()%(COLS-len-3);	/* random column to start at */
 	void *retval;
 	int len2 = len;
 	//saucerinfo[info->index].id = pthread_self();
@@ -288,13 +293,18 @@ void *replace_thread(){
 	pthread_mutex_lock(&replace_mutex);
 	pthread_cond_wait(&replace_condition, &replace_mutex);
 	
-	mvprintw(8, 0, "first checkpoint, ");
+	mvprintw(10, 0, "index: %d", replace_index);
 	refresh();
 	
 	pthread_join(thrds[replace_index], &retval);
+	//sleep(2);
+	setup_saucer(replace_index);
+	if (pthread_create(&thrds[replace_index], NULL, saucers, &saucerinfo[replace_index])){
+		fprintf(stderr,"error creating saucer thread");
+		endwin();
+		exit(-1);
+	}
 	
-	mvprintw(9, 0, "second checkpoint");
-	refresh();
 	//if(pthread_cancel(saucerinfo->id)!=0){
 	/* leave some time between last to exit screen and new */
 	//sleep(5);
