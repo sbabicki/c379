@@ -54,25 +54,29 @@ struct shotprop{
 	int col;	/* where the shot is */
 	int row;
 	int num;	/* what number shot */
-};
-
-//struct rlimit {
-  //           rlim_t rlim_cur;  /* Soft limit */
-    //         rlim_t rlim_max;  /* Hard limit (ceiling for rlim_cur) */
-//};
+};	
 		
 int escape_update = 0;
 int rockets_update = NUMSHOTS;
 int score_update = 0;
 
+/* holds the element number of the thread that can be replaced */
+int thread_element;
+pthread_cond_t replace_condition = PTHREAD_COND_INITIALIZER;
+
 /* static mutex with default attributes */
 pthread_mutex_t mx = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t score = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t score_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t replace_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 int main(int ac, char *av[])
 {
 	int i, c;
 	
+	/* id for the thread that handles assigning replacements */
+	pthread_t replace_t;
+		
 	/* stores the threads */
 	pthread_t thrds[MAXSAUCERS];
 
@@ -91,6 +95,7 @@ int main(int ac, char *av[])
 	void *saucers();
 	void *shots();
 	int setup();
+	void *replace_thread();
 
         /* number of saucers */
 	int numsaucers;
@@ -108,6 +113,15 @@ int main(int ac, char *av[])
 		"Your system does not allow enough processes for this game\n");
 		exit(1);
 	}
+	
+	/* create a new thread to handle the other threads */
+	if (pthread_create(&replace_t, NULL, replace_thread, NULL)){
+
+		/* if thread is not created exit */
+		fprintf(stderr,"error creating thread");
+		endwin();
+		exit(-1);
+	} 
 	
 	/* set up curses */
 	initscr();
@@ -225,8 +239,11 @@ int setup(int nstrings, char *strings[], struct saucerprop saucerinfo[], void *t
  * in this program, recieves the address of the corresponding saucer properties
  * in this program, returns nothing
  */
-void *saucers(void *properties)
-{
+void *saucers(void *properties){	
+	
+	/*function prototype */
+	void stats();
+	
 	struct saucerprop *info = properties;	/* point to properties info for the saucer */
 	int len = strlen(info->str) + 2;	/* size of the saucer +2 (for padding) */
 	int col = 0;	/* random column to start at */
@@ -274,16 +291,16 @@ void *saucers(void *properties)
 			//	mvprintw(9, 0, "%d", info->thrdnum);
 			//	mvprintw(10, 0, "%d", info->element);
 				/* update the score now that a saucer escaped */
-				pthread_mutex_lock(&score);
+				pthread_mutex_lock(&score_mutex);
 				
 				escape_update ++;
 				stats();
 				
-				pthread_mutex_unlock(&score);
+				pthread_mutex_unlock(&score_mutex);
 				
-				index = info->thrdnum;
+				//index = info->thrdnum;
 				
-				more_saucers(info->thrdnum, info->element, info);
+				//more_saucers(info->thrdnum, info->element, info);
 				pthread_exit(retval);
 				//mvprintw(16, 0, "STILL ALIVEEEEEE");
 			}
@@ -296,24 +313,25 @@ void *saucers(void *properties)
  * expects the number of rows, the threads array, and the saucer array
  * returns the updated number of saucers
  */
+//pthread_create(&thrds[i], NULL, saucers, &saucerinfo[i])
 int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
-	sleep(2);
-	mvprintw(num+5, 0, "MORE , num %d, address %d", num, thrds);
+	//sleep(2);
+	//mvprintw(num+5, 0, "MORE , num %d, address %d", num, thrds);
 	
-	refresh();
-	pthread_mutex_lock(&mx);
+	//refresh();
+	//pthread_mutex_lock(&mx);
 	/* srand(getpid()); */
 	saucerinfo[num].str = "<-.->";	/* <---> */
 	saucerinfo[num].row = num%NUMROW;	/* the row */
 	saucerinfo[num].delay = 1+(rand()%15);	/* a speed */
 	saucerinfo[num].end = 1;	/* moving right */
-	saucerinfo[num].thrdnum = num;
-	saucerinfo[num].element = thrds;
-	num ++;	
-	pthread_mutex_unlock(&mx);
+	//saucerinfo[num].thrdnum = num;
+	//saucerinfo[num].element = thrds;
+	
+	//pthread_mutex_unlock(&mx);
 
 	/* once each thread is created it calls and stays in the saucers function */
-	if (pthread_create(thrds, NULL, saucers, &saucerinfo[num])){
+	if (pthread_create(&thrds[num], NULL, saucers, &saucerinfo[num])){
 			
 		/* if thread is not created exit */
 		fprintf(stderr,"error creating thread");
@@ -322,10 +340,15 @@ int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
 	}
 	
 	/* return the new number of saucers */
-	
+	num ++;	
 	return num;
 	
 	
+}
+
+void *replace_thread( ){
+	void *retval;
+	pthread_exit(retval);
 }
 
 void *shots(void *properties){
