@@ -44,17 +44,15 @@ struct saucerprop{
 	char *str;	/* the saucer string */
 	int row;	/* the row position on screen */
 	int delay;  	/* delay in time units */
-	int end;	/* +1 or -1 */
-	int hit;	/* -1 if not hit, +1 if hit */
-	int thrdnum;	/* element # from thrd array for canceling thread */
-	pthread_t *element;
-};
+	int index;	/* element # in thrd array */
 
+};
+/*
 struct shotprop{
-	int col;	/* where the shot is */
+	int col;	
 	int row;
-	int num;	/* what number shot */
-};	
+	int num;	
+};	*/
 		
 int escape_update = 0;
 int rockets_update = NUMSHOTS;
@@ -69,37 +67,35 @@ pthread_mutex_t mx = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t score_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t replace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* stores the threads */
 pthread_t thrds[MAXSAUCERS];
+
+/* for storing the properties of saucers and shots */
 struct saucerprop saucerinfo[MAXSAUCERS];
-int main(int ac, char *av[])
-{
+
+int main(int ac, char *av[]){
+	
 	int i, c;
 	
 	/* id for the thread that handles assigning replacements */
 	pthread_t replace_t;
-		
-	/* stores the threads */
-	//pthread_t thrds[MAXSAUCERS];
 
-	/* for storing the properties of saucers and shots */
-	//struct saucerprop saucerinfo[MAXSAUCERS];
-	struct shotprop shotinfo[NUMSHOTS];
+	//struct shotprop shotinfo[NUMSHOTS];
 	struct rlimit rlim;
 
 	/* arrays for saucers and shots */
-	char *saucerarray[NUMSAUCERS];
-	char *shotarray[NUMSHOTS];
+	//char *saucerarray[NUMSAUCERS];
+	//char *shotarray[NUMSHOTS];
 	
 	/* function prototypes */
 	void stats();
-	int more_saucers();
 	void *saucers();
 	void *shots();
-	int setup();
 	void *replace_thread();
+	void setup_saucer();
 
         /* number of saucers */
-	int numsaucers;
+	int nsaucers = NUMSAUCERS;
 
 	/* no arguments should be included for this program */
 	if (ac != 1){
@@ -117,10 +113,8 @@ int main(int ac, char *av[])
 	
 	/* create a new thread to handle the other threads */
 	if (pthread_create(&replace_t, NULL, replace_thread, NULL)){
-
 		/* if thread is not created exit */
-		fprintf(stderr,"error creating thread");
-		endwin();
+		fprintf(stderr,"error creating replacement control thread");
 		exit(-1);
 	} 
 	
@@ -133,22 +127,16 @@ int main(int ac, char *av[])
 	/* print message with info about the game @ the bottom of the page */
 	stats();
 
-	/* fill the saucer array with <---> strings */
+//MUTEX??
+	/* create a thread for each initial saucer */
 	for(i=0; i<NUMSAUCERS; i++){
-		saucerarray[i] = "<--->";
-	}
-	//mvprintw(i+5,0,"%s", saucerarray[i]);
-
-	/* populate the array of saucerprop structs */
-	numsaucers = setup(NUMSAUCERS, saucerarray, saucerinfo, thrds);
-
-	/* create a thread for each saucer */
-	for(i=0; i<numsaucers; i++){
-		/* once each thread is created it calls and stays in the saucers function */
+		
+		/* populate saucerinfo for the initial saucers */
+		setup_saucer(i);
+		
+		/* each thread is created - runs/exits in saucers function */
 		if (pthread_create(&thrds[i], NULL, saucers, &saucerinfo[i])){
-
-			/* if thread is not created exit */
-			fprintf(stderr,"error creating thread");
+			fprintf(stderr,"error creating saucer thread");
 			endwin();
 			exit(-1);
 		}
@@ -159,15 +147,10 @@ int main(int ac, char *av[])
 		
 		/* Add more saucers at random */
 		/* The more shots taken, the more saucers added */
-		if(rand()%RANDSAUCERS == 0 && numsaucers < MAXSAUCERS){
-			numsaucers = more_saucers(numsaucers, thrds, saucerinfo);
+		if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
+			setup_saucer(nsaucers);
+			nsaucers ++;
 		}
-		
-		////////////////////
-	//	mvprintw(6, 0, "address %d", &thrds[0]);
-	//	mvprintw(7, 0, "thread id %d", thrds[numsaucers-1]);
-	//	refresh();
-		
 		
 		/* read character from input and store in variable c */
 		c = getch();
@@ -177,26 +160,20 @@ int main(int ac, char *av[])
 			break;
 		}
 		
-		/* change direction of all saucers */
+//change		/* change direction of all saucers */
 		if(c == ' '){
-			for(i=0; i<numsaucers; i++){
-				saucerinfo[i].end = -saucerinfo[i].end;
-			}
+
 		}
 
-		/* change direction of specific saucer if it exists */
+//change		/* change direction of specific saucer if it exists */
 		if(c >= '0' && c <= '9'){
 			i = c - '0';
-			if (i < numsaucers){
-				saucerinfo[i].end = -saucerinfo[i].end;
-			}
 		}
-
 	}
 
 	/* cancel all the threads */
-	pthread_mutex_lock(&mx);
-	for(i=0; i<numsaucers; i++){
+/*mx?*/	pthread_mutex_lock(&mx);
+	for(i=0; i<nsaucers; i++){
 		pthread_cancel(thrds[i]);
 	}
 	pthread_cancel(replace_t);
@@ -205,34 +182,26 @@ int main(int ac, char *av[])
 }
 
 /* 
- * setup populates a saucerprop struct 
- * requires the number of strings to include, an array of the strings, and the array of structs to populate
- * returns the number of strings in the struct
- */
-int setup(int nstrings, char *strings[], struct saucerprop saucerinfo[], void *th)
-{
-	int numsaucers = ( nstrings > NUMSAUCERS ? NUMSAUCERS : nstrings );
-	int i;
+ * stats prints the number of rockets left and number of missed saucers to the screen
+*/
+void stats( ){
+		
+	/* print message at bottom of the screen */
+	mvprintw(LINES-1,0,"score:%d, rockets remaining: %d, escaped saucers: %d", score_update, rockets_update, escape_update);
+	refresh();
+}
 
-	/* assign rows and velocities to each saucer */
-	srand(getpid());
-	for(i=0 ; i<numsaucers; i++){
-		saucerinfo[i].str = strings[i];	/* <---> */
-		saucerinfo[i].row = i%NUMROW;	/* the row */
-		saucerinfo[i].delay = 1+(rand()%15);	/* a speed */
-		saucerinfo[i].end = 1;	/* moving right */
-		saucerinfo[i].thrdnum = i;
-		saucerinfo[i].element = &th[i];
-	}
 
-	/* set up curses 
-	initscr();
-	crmode();
-	noecho();
-	clear();
-	mvprintw(LINES-1,0,"'Q' to quit, '0'..'%d' to bounce",numsaucers-1);
-	*/
-	return numsaucers;
+/* 
+ * setup_saucer populates one element (specified by i) in saucerinfo
+ */ 
+void setup_saucer(int i){
+	
+	srand(getpid()+i);
+	saucerinfo[i].str = "<--->";	
+	saucerinfo[i].row = (i+3)%NUMROW;
+	saucerinfo[i].delay = 1+(rand()%15);
+	saucerinfo[i].index = i;
 }
 
 /* 
@@ -243,17 +212,13 @@ int setup(int nstrings, char *strings[], struct saucerprop saucerinfo[], void *t
  */
 void *saucers(void *properties){	
 	
-	/*function prototype */
-	void stats();
-	
 	struct saucerprop *info = properties;	/* point to properties info for the saucer */
 	int len = strlen(info->str) + 2;	/* size of the saucer +2 (for padding) */
-	int col = 0;	/* random column to start at */
-	int index;
-	//int col = -1*rand()%(COLS-len-3);	/* random column to start at */
+/*for testing only*/	int col = 0;	
+//int col = -1*rand()%(COLS-len-3);	/* random column to start at */
 	void *retval;
-	
 	int len2 = len;
+	//saucerinfo[info->index].id = pthread_self();
 	
 	while(1){
 		move(LINES-1, COLS-1);
@@ -262,7 +227,7 @@ void *saucers(void *properties){
 		usleep(info->delay*TUNIT);
 
 		/* lock the mutex mx CRITICAL REGION BELOW */
-		pthread_mutex_lock(&mx);
+/*?mx*/		pthread_mutex_lock(&mx);
 		
 		/* move cursor to position (row, col) */
 		move(info->row, col);
@@ -285,108 +250,68 @@ void *saucers(void *properties){
 		/* when we reach the end of the screen start to stop writing */
 		if (col+len >= COLS){
 			
-			/* write progressively less of the string */
+			/* @ end - write progressively less of the string */
 			len2 = len2-1;
 			
 			/* now the string is off the page, exit the thread */
 			if(len2 < 0){
-			//	mvprintw(9, 0, "%d", info->thrdnum);
-			//	mvprintw(10, 0, "%d", info->element);
+
 				/* update the score now that a saucer escaped */
 				pthread_mutex_lock(&score_mutex);
-				
 				escape_update ++;
 				stats();
-				
 				pthread_mutex_unlock(&score_mutex);
 				
-				
+				/* signal that the thread can be replaced */
 				pthread_mutex_lock(&replace_mutex);
 				
-				replace_index = info->thrdnum;
+				/* set global to index that can be replaced */
+				replace_index = info->index;
 				pthread_cond_signal(&replace_condition);
-				
 				pthread_mutex_unlock(&replace_mutex);
 				
-				//index = info->thrdnum;
-				
-				//more_saucers(info->thrdnum, info->element, info);
+				/* now we are finished with the thread */
 				pthread_exit(retval);
-				//mvprintw(16, 0, "STILL ALIVEEEEEE");
 			}
 		}	
 	}
 }
 
-/* 
- * more_saucers creates one new saucer and creates a thread for it
- * expects the number of rows, the threads array, and the saucer array
- * returns the updated number of saucers
- */
-//pthread_create(&thrds[i], NULL, saucers, &saucerinfo[i])
-int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
-	//sleep(2);
-	//mvprintw(num+5, 0, "MORE , num %d, address %d", num, thrds);
-	
-	//refresh();
-	//pthread_mutex_lock(&mx);
-	/* srand(getpid()); */
-	saucerinfo[num].str = "<-.->";	/* <---> */
-	saucerinfo[num].row = num%NUMROW;	/* the row */
-	saucerinfo[num].delay = 1+(rand()%15);	/* a speed */
-	saucerinfo[num].end = 1;	/* moving right */
-	saucerinfo[num].thrdnum = num;
-	//saucerinfo[num].element = thrds;
-	
-	//pthread_mutex_unlock(&mx);
-
-	/* once each thread is created it calls and stays in the saucers function */
-	if (pthread_create(&thrds[num], NULL, saucers, &saucerinfo[num])){
-			
-		/* if thread is not created exit */
-		fprintf(stderr,"error creating thread");
-		endwin();
-		exit(0);
-	}
-	
-	/* return the new number of saucers */
-	num ++;	
-	return num;
-	
-	
-}
 
 void *replace_thread(){
-	void *retval;
+	
+	void **retval;
+	void *retval2;
 	
 	
 	while(1){
 
+	/* wait until given the signal to replace a thread */
 	pthread_mutex_lock(&replace_mutex);
 	pthread_cond_wait(&replace_condition, &replace_mutex);
 	
-	/* leave some space between last to exit screen and new */
-	sleep(5);
-	mvprintw(10, 0, "index: %d", replace_index);
+	mvprintw(8, 0, "first checkpoint, ");
 	refresh();
 	
-	//pthread_create(&thrds[replace_index], NULL, more_saucers, &saucerinfo[replace_index]);
+	//pthread_join(thrds[replace_index], retval);
+	
+	mvprintw(9, 0, "second checkpoint");
+	refresh();
+	//if(pthread_cancel(saucerinfo->id)!=0){
+	/* leave some time between last to exit screen and new */
+	//sleep(5);
+	
+/*testing purposes*/
+	mvprintw(10, 0, "index: %d", replace_index);
+	refresh();
+	//}
+//else mvprintw(11, 0, "cancel didn't work");
 	
 	pthread_mutex_unlock(&replace_mutex);
-	}	
-	
+	}
 }
 
 void *shots(void *properties){
 	return "blah";
 }
 
-/* 
- * stats prints the number of rockets left and number of missed saucers to the screen
-*/
-void stats( ){
-		
-	/* print message at bottom of the screen */
-	mvprintw(LINES-1,0,"score:%d, rockets remaining: %d, escaped saucers: %d", score_update, rockets_update, escape_update);
-	refresh();
-}
