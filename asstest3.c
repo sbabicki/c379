@@ -61,7 +61,7 @@ int rockets_update = NUMSHOTS;
 int score_update = 0;
 
 /* holds the element number of the thread that can be replaced */
-int thread_element;
+int replace_index = 7;
 pthread_cond_t replace_condition = PTHREAD_COND_INITIALIZER;
 
 /* static mutex with default attributes */
@@ -69,7 +69,8 @@ pthread_mutex_t mx = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t score_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t replace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-
+pthread_t thrds[MAXSAUCERS];
+struct saucerprop saucerinfo[MAXSAUCERS];
 int main(int ac, char *av[])
 {
 	int i, c;
@@ -78,10 +79,10 @@ int main(int ac, char *av[])
 	pthread_t replace_t;
 		
 	/* stores the threads */
-	pthread_t thrds[MAXSAUCERS];
+	//pthread_t thrds[MAXSAUCERS];
 
 	/* for storing the properties of saucers and shots */
-	struct saucerprop saucerinfo[MAXSAUCERS];
+	//struct saucerprop saucerinfo[MAXSAUCERS];
 	struct shotprop shotinfo[NUMSHOTS];
 	struct rlimit rlim;
 
@@ -198,6 +199,7 @@ int main(int ac, char *av[])
 	for(i=0; i<numsaucers; i++){
 		pthread_cancel(thrds[i]);
 	}
+	pthread_cancel(replace_t);
 	endwin();
 	return 0;
 }
@@ -298,6 +300,14 @@ void *saucers(void *properties){
 				
 				pthread_mutex_unlock(&score_mutex);
 				
+				
+				pthread_mutex_lock(&replace_mutex);
+				
+				replace_index = info->thrdnum;
+				pthread_cond_signal(&replace_condition);
+				
+				pthread_mutex_unlock(&replace_mutex);
+				
 				//index = info->thrdnum;
 				
 				//more_saucers(info->thrdnum, info->element, info);
@@ -325,7 +335,7 @@ int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
 	saucerinfo[num].row = num%NUMROW;	/* the row */
 	saucerinfo[num].delay = 1+(rand()%15);	/* a speed */
 	saucerinfo[num].end = 1;	/* moving right */
-	//saucerinfo[num].thrdnum = num;
+	saucerinfo[num].thrdnum = num;
 	//saucerinfo[num].element = thrds;
 	
 	//pthread_mutex_unlock(&mx);
@@ -346,9 +356,25 @@ int more_saucers(int num, pthread_t *thrds, struct saucerprop *saucerinfo){
 	
 }
 
-void *replace_thread( ){
+void *replace_thread(){
 	void *retval;
-	pthread_exit(retval);
+	
+	
+	while(1){
+
+	pthread_mutex_lock(&replace_mutex);
+	pthread_cond_wait(&replace_condition, &replace_mutex);
+	
+	/* leave some space between last to exit screen and new */
+	sleep(5);
+	mvprintw(10, 0, "index: %d", replace_index);
+	refresh();
+	
+	//pthread_create(&thrds[replace_index], NULL, more_saucers, &saucerinfo[replace_index]);
+	
+	pthread_mutex_unlock(&replace_mutex);
+	}	
+	
 }
 
 void *shots(void *properties){
