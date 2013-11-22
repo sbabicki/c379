@@ -19,6 +19,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
+
 /* limit of number of rows with saucers */
 #define NUMROW 3
 
@@ -31,8 +32,8 @@
 /* the maximum number of shot threads */
 #define MAXSHOTS 100
 
-/* higher number = less likely to have random saucers appear */
-#define RANDSAUCERS 20
+/* higher number = generally less likely to have random saucers appear */
+#define RANDSAUCERS 50
 
 /* limit of number of shots allowed */
 #define NUMSHOTS 5
@@ -42,7 +43,6 @@
 #define SHOTSPEED 60000
 
 struct saucerprop{
-	char *str;	/* the saucer string */
 	int row;	/* the row position on screen */
 	int delay;  	/* delay in time units */
 	int index;	/* element # in thrd array */
@@ -62,7 +62,7 @@ int rockets_update = NUMSHOTS;
 int score_update = 0;
 
 /* holds the element number of the thread that can be replaced */
-int replace_index = 7;
+int replace_index;
 pthread_cond_t replace_condition = PTHREAD_COND_INITIALIZER;
 
 /* static mutex with default attributes */
@@ -218,8 +218,8 @@ int main(int ac, char *av[]){
 }
 
 /* 
- * stats prints the number of rockets left and number of missed saucers to the screen
-*/
+ * stats prints the # of rockets left and # of missed saucers to the screen
+ */
 void stats( ){
 		
 	/* print message at bottom of the screen */
@@ -233,8 +233,7 @@ void stats( ){
  */ 
 void setup_saucer(int i){
 	
-	srand(getpid()+i);
-	saucerinfo[i].str = "<--->";	
+	srand(2*(escape_update+score_update) +i);
 	saucerinfo[i].row = (i+3)%NUMROW;
 	saucerinfo[i].delay = 1+(rand()%15);
 	saucerinfo[i].index = i;
@@ -249,12 +248,12 @@ void setup_saucer(int i){
 void *saucers(void *properties){	
 	
 	struct saucerprop *info = properties;	/* point to properties info for the saucer */
-	int len = strlen(info->str) + 2;	/* size of the saucer +2 (for padding) */
-/*for testing only*/	//int col = 0;	
-	int col = -1*rand()%(COLS-len-3);	/* random column to start at */
-	void *retval;
+	char *shape = " <--->";
+	int len = strlen(shape);
 	int len2 = len;
-	//saucerinfo[info->index].id = pthread_self();
+/*for testing only*/	int col = 0;	
+/* int col = -1*rand()%(COLS-len-3); */	/* random column to start at */
+	void *retval;
 	
 	while(1){
 		
@@ -262,18 +261,11 @@ void *saucers(void *properties){
 		usleep(info->delay*TUNIT);
 
 		/* lock the mutex draw CRITICAL REGION BELOW */
-/*?mx*/		pthread_mutex_lock(&draw);
+		pthread_mutex_lock(&draw);
 		
-		move(LINES-1, COLS-1);
+		/* print the saucer on the screen at (row, col) */
+		mvaddnstr(info->row, col, shape, len2);
 		
-		/* move cursor to position (row, col) */
-		move(info->row, col);
-
-		/* place ' '"<--->"' ' at the new position (row, col) */
-		addch(' ');
-		addnstr(info->str, len2);
-		addch(' ');
-
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
 		refresh();
@@ -314,7 +306,12 @@ void *saucers(void *properties){
 	}
 }
 
-
+/*
+ * replace_thread is run constantly by one thread
+ * it replaces a saucer thread that has finished running with a new saucer 
+ * allows many threads to be created but only a fixed number of active threads
+ * and a set amount of threads to be stored in an array
+ */
 void *replace_thread(){
 	
 	void *retval;
@@ -325,11 +322,17 @@ void *replace_thread(){
 	pthread_mutex_lock(&replace_mutex);
 	pthread_cond_wait(&replace_condition, &replace_mutex);
 	
-	mvprintw(10, 0, "index: %d", replace_index);
-	refresh();
+/* testing purposes */	
+/* mvprintw(10, 0, "index: %d", replace_index);
+refresh(); */
 	
+	/* wait until a thread terminates for sure before replacing it */
 	pthread_join(thrds[replace_index], &retval);
-	//sleep(2);
+	
+	/* optional delay */
+	/* sleep(2); */
+	
+	/* populate a new saucer and create new thread reusing an old index */
 	setup_saucer(replace_index);
 	if (pthread_create(&thrds[replace_index], NULL, saucers, &saucerinfo[replace_index])){
 		fprintf(stderr,"error creating saucer thread");
@@ -337,14 +340,9 @@ void *replace_thread(){
 		exit(-1);
 	}
 	
-	//if(pthread_cancel(saucerinfo->id)!=0){
-	/* leave some time between last to exit screen and new */
-	//sleep(5);
-	
 /*testing purposes*/
-	mvprintw(10, 0, "index: %d", replace_index);
-	refresh();
-	
+/* mvprintw(10, 0, "index: %d", replace_index); 
+refresh(); */
 	pthread_mutex_unlock(&replace_mutex);
 	}
 }
@@ -353,17 +351,16 @@ int launch_site(int direction, int position){
 	
 	/* if we are within the range of the screen move to new position */
 	if(position+direction >= 0 && position+direction < COLS-2){
-		position = direction + position;
-	
-		pthread_mutex_lock(&draw);
 		
-		move(LINES-2, position);
-
-		/* place ' '"|"' ' at the new position (row, col) */
-		addch(' ');
-		addch('|');
-		addch(' ');
-mvprintw(LINES - 4, 0, "launcher %d", position);
+		position = direction + position;
+		
+		pthread_mutex_lock(&draw);
+		mvaddstr(LINES-2, position, " | ");
+		
+/* for testing */		
+/* mvprintw(LINES - 4, 0, "launcher %d", position); 
+*/
+		
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
 		refresh();
@@ -374,41 +371,44 @@ mvprintw(LINES - 4, 0, "launcher %d", position);
 	return position;
 }
 
+/* 
+ * shots is the function used by all the shot threads
+ * prints shots on the screen
+ * in this program, recieves the address of the corresponding shot properties
+ * in this program, returns nothing
+ */
 void *shots(void *properties){
+	
 	struct shotprop *info = properties;
 	void *retval;
+	
+	/* initial row at bottom of screen */
 	info->row = LINES - 3;
-	mvprintw(LINES - 3, 0, "column #%d, shot #%d", info->col, info->index);
+	
+/* for testing */ 
+/* mvprintw(LINES - 3, 0, "column #%d, shot #%d", info->col, info->index);
+*/
 
 	while(1){
+		
+		/* specify the delay in SHOTSPEED */
 		usleep(SHOTSPEED);
 		
 		pthread_mutex_lock(&draw);
-		//move(LINES-1, COLS-1);
-		/* move cursor to position (row, col) */
-		//move(info->row, info->col);
-		//addch(' ');
-		mvaddch(info->row, info->col, ' ');
-		info->row --;
-		//move(info->row, info->col);
-		//addch('^');
 		
+		/* cover the old shot */
+		mvaddch(info->row, info->col, ' ');
+		
+		/* draw the new shot */
+		info->row --;
 		mvaddch(info->row, info->col, '^');
 		
-		//  move(info->row, info->col);
-		//addch(' ');
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
 		refresh();
-
-		/* unlock mutex protecting critical region */
 		pthread_mutex_unlock(&draw);
-		/* move to next row */
 		
-
-		
-		
-		/* reach the top of the screen without hitting anything */
+		/* if reach the top of the screen without hitting anything */
 		if(info->row < 0){
 			
 			/* update the score now that a shot missed */
@@ -422,4 +422,3 @@ void *shots(void *properties){
 		}
 	}
 }
-
