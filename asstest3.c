@@ -45,6 +45,8 @@ struct saucerprop{
 	int row;	/* the row position on screen */
 	int delay;  	/* delay in time units */
 	int index;	/* element # in thrd array */
+	int col1;
+	int col2;
 
 };
 /*
@@ -63,7 +65,7 @@ int replace_index = 7;
 pthread_cond_t replace_condition = PTHREAD_COND_INITIALIZER;
 
 /* static mutex with default attributes */
-pthread_mutex_t mx = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t draw = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t score_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t replace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -76,6 +78,7 @@ struct saucerprop saucerinfo[MAXSAUCERS];
 int main(int ac, char *av[]){
 	
 	int i, c;
+	int launch_position;
 	
 	/* id for the thread that handles assigning replacements */
 	pthread_t replace_t;
@@ -92,6 +95,7 @@ int main(int ac, char *av[]){
 	void *saucers();
 	void *shots();
 	void *replace_thread();
+	int launch_site();
 	void setup_saucer();
 
         /* number of saucers */
@@ -126,6 +130,10 @@ int main(int ac, char *av[]){
 	
 	/* print message with info about the game @ the bottom of the page */
 	stats();
+	
+	/* draw launch site in the middle of the screen */
+	launch_position = (COLS-1)/2;
+	launch_site(0, launch_position);
 
 //MUTEX??
 	/* create a thread for each initial saucer */
@@ -165,10 +173,23 @@ int main(int ac, char *av[]){
 			break;
 		}
 		
+		
+		/* move launch site to the left */
+		if(c == ','){
+			launch_position = launch_site(-1, launch_position);
+		}
+		
+		/* move launch site to the right */
+		else if(c == '.'){
+			launch_position = launch_site(1, launch_position);
+		}
+		
+		
 //change		/* change direction of all saucers */
 		if(c == ' '){
 
 		}
+		
 
 //change		/* change direction of specific saucer if it exists */
 		if(c >= '0' && c <= '9'){
@@ -177,7 +198,7 @@ int main(int ac, char *av[]){
 	}
 
 	/* cancel all the threads */
-/*mx?*/	pthread_mutex_lock(&mx);
+/*mx?*/	pthread_mutex_lock(&draw);
 	for(i=0; i<nsaucers; i++){
 		pthread_cancel(thrds[i]);
 	}
@@ -226,13 +247,14 @@ void *saucers(void *properties){
 	//saucerinfo[info->index].id = pthread_self();
 	
 	while(1){
-		move(LINES-1, COLS-1);
 		
 		/* thread sleeps for (its delay time * defined timeunits) */
 		usleep(info->delay*TUNIT);
 
-		/* lock the mutex mx CRITICAL REGION BELOW */
-/*?mx*/		pthread_mutex_lock(&mx);
+		/* lock the mutex draw CRITICAL REGION BELOW */
+/*?mx*/		pthread_mutex_lock(&draw);
+		
+		move(LINES-1, COLS-1);
 		
 		/* move cursor to position (row, col) */
 		move(info->row, col);
@@ -247,7 +269,7 @@ void *saucers(void *properties){
 		refresh();
 
 		/* unlock mutex protecting critical region */
-		pthread_mutex_unlock(&mx);
+		pthread_mutex_unlock(&draw);
 
 		/* move to next column */
 		col ++;
@@ -312,11 +334,33 @@ void *replace_thread(){
 /*testing purposes*/
 	mvprintw(10, 0, "index: %d", replace_index);
 	refresh();
-	//}
-//else mvprintw(11, 0, "cancel didn't work");
 	
 	pthread_mutex_unlock(&replace_mutex);
 	}
+}
+
+int launch_site(int direction, int position){
+	
+	/* if we are within the range of the screen move to new position */
+	if(position+direction >= 0 && position+direction < COLS-1){
+		position = direction + position;
+	
+		pthread_mutex_lock(&draw);
+		move(LINES-2, position);
+
+		/* place ' '"|"' ' at the new position (row, col) */
+		addch(' ');
+		addch('|');
+		addch(' ');
+
+		/* move cursor back and output changes on the screen */
+		move(LINES-1, COLS-1);
+		refresh();
+
+		/* unlock mutex protecting critical region */
+		pthread_mutex_unlock(&draw);
+	}
+	return position;
 }
 
 void *shots(void *properties){
