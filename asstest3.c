@@ -39,6 +39,7 @@
 
 /* timeunits in microseconds */
 #define	TUNIT 20000
+#define SHOTSPEED 60000
 
 struct saucerprop{
 	char *str;	/* the saucer string */
@@ -49,12 +50,12 @@ struct saucerprop{
 	int col2;
 
 };
-/*
+
 struct shotprop{
 	int col;	
 	int row;
-	int num;	
-};	*/
+	int index;	
+};
 		
 int escape_update = 0;
 int rockets_update = NUMSHOTS;
@@ -71,14 +72,17 @@ pthread_mutex_t replace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* stores the threads */
 pthread_t thrds[MAXSAUCERS];
+pthread_t shot_t[MAXSHOTS];
 
 /* for storing the properties of saucers and shots */
 struct saucerprop saucerinfo[MAXSAUCERS];
+struct shotprop shotinfo[MAXSHOTS];
 
 int main(int ac, char *av[]){
 	
 	int i, c;
 	int launch_position;
+	int shot_index = 0;
 	
 	/* id for the thread that handles assigning replacements */
 	pthread_t replace_t;
@@ -131,7 +135,7 @@ int main(int ac, char *av[]){
 	/* print message with info about the game @ the bottom of the page */
 	stats();
 	
-	/* draw launch site in the middle of the screen */
+	/* draw original launch site in the middle of the screen */
 	launch_position = (COLS-1)/2;
 	launch_site(0, launch_position);
 
@@ -185,16 +189,22 @@ int main(int ac, char *av[]){
 		}
 		
 		
-//change		/* change direction of all saucers */
-		if(c == ' '){
-
+		/* fire one shot */
+		else if(c == ' '){
+			
+			/* set cols/index. pos + 1 b/c of the space before | */
+			shotinfo[shot_index].col = launch_position + 1;
+			shotinfo[shot_index].index = shot_index;
+			pthread_create(&shot_t[shot_index], NULL, shots, &shotinfo[shot_index]);
+			shot_index ++;
 		}
 		
 
-//change		/* change direction of specific saucer if it exists */
+/*
 		if(c >= '0' && c <= '9'){
 			i = c - '0';
 		}
+*/	
 	}
 
 	/* cancel all the threads */
@@ -342,17 +352,18 @@ void *replace_thread(){
 int launch_site(int direction, int position){
 	
 	/* if we are within the range of the screen move to new position */
-	if(position+direction >= 0 && position+direction < COLS-1){
+	if(position+direction >= 0 && position+direction < COLS-2){
 		position = direction + position;
 	
 		pthread_mutex_lock(&draw);
+		
 		move(LINES-2, position);
 
 		/* place ' '"|"' ' at the new position (row, col) */
 		addch(' ');
 		addch('|');
 		addch(' ');
-
+mvprintw(LINES - 4, 0, "launcher %d", position);
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
 		refresh();
@@ -364,6 +375,51 @@ int launch_site(int direction, int position){
 }
 
 void *shots(void *properties){
-	return "blah";
+	struct shotprop *info = properties;
+	void *retval;
+	info->row = LINES - 3;
+	mvprintw(LINES - 3, 0, "column #%d, shot #%d", info->col, info->index);
+
+	while(1){
+		usleep(SHOTSPEED);
+		
+		pthread_mutex_lock(&draw);
+		//move(LINES-1, COLS-1);
+		/* move cursor to position (row, col) */
+		//move(info->row, info->col);
+		//addch(' ');
+		mvaddch(info->row, info->col, ' ');
+		info->row --;
+		//move(info->row, info->col);
+		//addch('^');
+		
+		mvaddch(info->row, info->col, '^');
+		
+		//  move(info->row, info->col);
+		//addch(' ');
+		/* move cursor back and output changes on the screen */
+		move(LINES-1, COLS-1);
+		refresh();
+
+		/* unlock mutex protecting critical region */
+		pthread_mutex_unlock(&draw);
+		/* move to next row */
+		
+
+		
+		
+		/* reach the top of the screen without hitting anything */
+		if(info->row < 0){
+			
+			/* update the score now that a shot missed */
+			pthread_mutex_lock(&score_mutex);
+			rockets_update --;
+			stats();
+			pthread_mutex_unlock(&score_mutex);
+			
+			/* now we are finished with the thread */
+			pthread_exit(retval);
+		}
+	}
 }
 
