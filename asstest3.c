@@ -21,16 +21,16 @@
 
 
 /* limit of number of rows with saucers */
-#define NUMROW 1
+#define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 1
+#define	NUMSAUCERS 3
 
 /* the maximum number of saucers at one time */
 #define MAXSAUCERS 5
 
 /* the maximum number of shot threads */
-#define MAXSHOTS 100
+#define MAXSHOTS 500
 
 /* higher number = generally less likely to have random saucers appear */
 #define RANDSAUCERS 50
@@ -153,7 +153,7 @@ int main(int ac, char *av[]){
 	/* found this section of code from http://bit.ly/19Px1R4 */
 	/* creates a 2D array */
 	array = calloc(NUMROW, sizeof(*array));
-	data = calloc(NUMROW * (COLS-1), sizeof(*data));
+	data = calloc(NUMROW * (COLS), sizeof(*data));
 	
 	/* error checking: calloc returns NULL if it failed */
 	if(array == NULL || data == NULL) {
@@ -266,8 +266,12 @@ int main(int ac, char *av[]){
 void stats( ){
 		
 	/* print message at bottom of the screen */
+	pthread_mutex_lock(&draw);
+	move(LINES-1, COLS-1);
 	mvprintw(LINES-1,0,"score:%d, rockets remaining: %d, escaped saucers: %d", score_update, rockets_update, escape_update);
+	move(LINES-1, COLS-1);
 	refresh();
+	pthread_mutex_unlock(&draw);
 }
 
 
@@ -308,7 +312,7 @@ void *saucers(void *properties){
 
 		/* lock the mutex draw CRITICAL REGION BELOW */
 		pthread_mutex_lock(&draw);
-		
+		move(LINES-1, COLS-1);
 		/* print the saucer on the screen at (row, col) */
 		mvaddnstr(info->row, col, shape, len2);
 		
@@ -333,11 +337,12 @@ void *saucers(void *properties){
 		collision_position[info->row][col+1].saucer); */
 		
 		/* for testing */
+		/*
 		for(i=0;i<COLS-1; i++){
 			mvprintw(NUMROW+1, i, "%d", 
 			collision_position[info->row][i].saucer);
-		}
-		refresh();
+		} 
+		refresh(); */
 	
 		/* unlock mutex protecting critical region */
 		pthread_mutex_unlock(&draw);
@@ -424,6 +429,7 @@ int launch_site(int direction, int position){
 		position = direction + position;
 		
 		pthread_mutex_lock(&draw);
+		move(LINES-1, COLS-1);
 		mvaddstr(LINES-2, position, " | ");
 		
 /* for testing */		
@@ -464,7 +470,7 @@ void *shots(void *properties){
 		usleep(SHOTSPEED);
 		
 		pthread_mutex_lock(&draw);
-		
+		move(LINES-1, COLS-1);
 		/* cover the old shot */
 		mvaddch(info->row, info->col, ' ');
 		
