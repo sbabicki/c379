@@ -21,10 +21,10 @@
 
 
 /* limit of number of rows with saucers */
-#define NUMROW 3
+#define NUMROW 1
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 3
+#define	NUMSAUCERS 1
 
 /* the maximum number of saucers at one time */
 #define MAXSAUCERS 5
@@ -152,8 +152,8 @@ int main(int ac, char *av[]){
 	
 	/* found this section of code from http://bit.ly/19Px1R4 */
 	/* creates a 2D array */
-	array = calloc(LINES-1, sizeof(*array));
-	data = calloc((LINES-1) * (COLS-1), sizeof(*data));
+	array = calloc(NUMROW, sizeof(*array));
+	data = calloc(NUMROW * (COLS-1), sizeof(*data));
 	
 	/* error checking: calloc returns NULL if it failed */
 	if(array == NULL || data == NULL) {
@@ -162,7 +162,7 @@ int main(int ac, char *av[]){
 	}
 	
 	/* connect the rows and cols, now we can use array[i][j] */
-	for(i = 0; i < LINES-1; i++){
+	for(i = 0; i < NUMROW; i++){
 		array[i] = &data[i * (COLS-1)];
 	}
 	/* end section from stackoverflow */
@@ -290,6 +290,7 @@ void setup_saucer(int i){
  */
 void *saucers(void *properties){	
 	
+	int i;
 	struct saucerprop *info = properties;	/* point to properties info for the saucer */
 	char *shape = " <--->";
 	int len = strlen(shape);
@@ -299,6 +300,8 @@ void *saucers(void *properties){
 	void *retval;
 	
 	while(1){
+		
+		
 		
 		/* thread sleeps for (its delay time * defined timeunits) */
 		usleep(info->delay*TUNIT);
@@ -312,7 +315,30 @@ void *saucers(void *properties){
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
 		refresh();
-
+		
+		/* update collision array. len-1 because of the extra space */
+		for(i=0; i<len-1; i++){
+			
+			/* add new position and remove old position */
+			collision_position[info->row][col+1+i].saucer ++;
+			if(col>0){
+				collision_position[info->row][col+i].saucer --;
+			}
+		}
+		
+		/* for testing */
+		/* mvprintw(3, col, "%d", 
+		collision_position[info->row][col].saucer); 
+		mvprintw(2, col, "%d", 
+		collision_position[info->row][col+1].saucer); */
+		
+		/* for testing */
+		for(i=0;i<COLS-1; i++){
+			mvprintw(NUMROW+1, i, "%d", 
+			collision_position[info->row][i].saucer);
+		}
+		refresh();
+	
 		/* unlock mutex protecting critical region */
 		pthread_mutex_unlock(&draw);
 
