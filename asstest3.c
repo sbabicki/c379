@@ -24,10 +24,10 @@
 #define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 2
+#define	NUMSAUCERS 3
 
 /* the maximum number of saucers at one time */
-#define MAXSAUCERS 20
+#define MAXSAUCERS 5
 
 /* the maximum number of shot threads */
 #define MAXSHOTS 100
@@ -56,6 +56,14 @@ struct shotprop{
 	int row;
 	int index;	
 };
+
+struct screen{
+	int shot;
+	int saucer;
+};
+
+/* collision detection array */
+struct screen **collision_position;
 		
 int escape_update = 0;
 int rockets_update = NUMSHOTS;
@@ -78,17 +86,27 @@ pthread_t shot_t[MAXSHOTS];
 struct saucerprop saucerinfo[MAXSAUCERS];
 struct shotprop shotinfo[MAXSHOTS];
 
+
 int main(int ac, char *av[]){
 	
 	int i, c;
 	int launch_position;
 	int shot_index = 0;
 	
+	//void *collision_array;
+	
+	/* collision detection */
+	//struct screen collision[LINES-1][COLS-1];
+	
 	/* id for the thread that handles assigning replacements */
 	pthread_t replace_t;
 
 	//struct shotprop shotinfo[NUMSHOTS];
 	struct rlimit rlim;
+	
+	/* for creating the 2D array used for collision detection */
+	struct screen **array;
+	struct screen *data;
 
 	/* arrays for saucers and shots */
 	//char *saucerarray[NUMSAUCERS];
@@ -118,19 +136,39 @@ int main(int ac, char *av[]){
 		"Your system does not allow enough processes for this game\n");
 		exit(1);
 	}
-	
+
 	/* create a new thread to handle the other threads */
 	if (pthread_create(&replace_t, NULL, replace_thread, NULL)){
 		/* if thread is not created exit */
 		fprintf(stderr,"error creating replacement control thread");
 		exit(-1);
-	} 
+	}
 	
 	/* set up curses */
 	initscr();
 	crmode();
 	noecho();
 	clear();
+	
+	/* found this section of code from http://bit.ly/19Px1R4 */
+	/* creates a 2D array */
+	array = calloc(LINES-1, sizeof(*array));
+	data = calloc((LINES-1) * (COLS-1), sizeof(*data));
+	
+	/* error checking: calloc returns NULL if it failed */
+	if(array == NULL || data == NULL) {
+		fprintf(stderr, "calloc failed, maybe we ran out of memory :(");
+		exit(-1);
+	}
+	
+	/* connect the rows and cols, now we can use array[i][j] */
+	for(i = 0; i < LINES-1; i++){
+		array[i] = &data[i * (COLS-1)];
+	}
+	/* end section from stackoverflow */
+	
+	/* collision_position is a global so any function can access array */
+	collision_position = array;
 	
 	/* print message with info about the game @ the bottom of the page */
 	stats();
@@ -139,7 +177,6 @@ int main(int ac, char *av[]){
 	launch_position = (COLS-1)/2;
 	launch_site(0, launch_position);
 
-//MUTEX??
 	/* create a thread for each initial saucer */
 	for(i=0; i<NUMSAUCERS; i++){
 		
@@ -213,6 +250,12 @@ int main(int ac, char *av[]){
 		pthread_cancel(thrds[i]);
 	}
 	pthread_cancel(replace_t);
+	
+	/* free allocated memory */
+	free(array[0]);
+	free(array);
+	
+	/* close curses */
 	endwin();
 	return 0;
 }
