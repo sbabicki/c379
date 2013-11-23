@@ -4,11 +4,14 @@ Functions
 Collision detection
 
 Threads
-	replace etc
+	//replace etc
+	thread storage arrays 
+		replace for the saucers
+		looping for the shots array
+	
 
 Mutexes
 
 Condition Variables
-
 
 

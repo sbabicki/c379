@@ -26,17 +26,17 @@
 /* number of initial saucers to display at the start of the program */
 #define	NUMSAUCERS 3
 
+/* number of initial shots limit */
+#define NUMSHOTS 5
+
 /* the maximum number of saucers at one time */
 #define MAXSAUCERS 5
 
 /* the maximum number of shot threads */
-#define MAXSHOTS 500
+#define MAXSHOTS 50
 
 /* higher number = generally less likely to have random saucers appear */
 #define RANDSAUCERS 50
-
-/* limit of number of shots allowed */
-#define NUMSHOTS 5
 
 /* timeunits in microseconds */
 #define	TUNIT 20000
@@ -196,7 +196,7 @@ int main(int ac, char *av[]){
 		
 		/* Add more saucers at random */
 		/* The more shots taken, the more saucers added */
-		if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
+		/*if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
 			setup_saucer(nsaucers);
 			if (pthread_create(&thrds[nsaucers], NULL, saucers, &saucerinfo[nsaucers])){
 				fprintf(stderr,"error creating saucer thread");
@@ -204,7 +204,7 @@ int main(int ac, char *av[]){
 				exit(-1);
 			}
 			nsaucers ++;
-		}
+		}*/
 		
 		/* read character from input and store in variable c */
 		c = getch();
@@ -229,6 +229,10 @@ int main(int ac, char *av[]){
 		/* fire one shot */
 		else if(c == ' '){
 			
+			/* loop to begining of the array */
+			if(shot_index == MAXSHOTS){
+				shot_index = 0;
+			}
 			/* set cols/index. pos + 1 b/c of the space before | */
 			shotinfo[shot_index].col = launch_position + 1;
 			shotinfo[shot_index].index = shot_index;
