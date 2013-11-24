@@ -21,16 +21,16 @@
 
 
 /* limit of number of rows with saucers */
-#define NUMROW 4
+#define NUMROW 1
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 5
+#define	NUMSAUCERS 4
 
 /* number of initial shots limit */
 #define NUMSHOTS 5
 
 /* the maximum number of saucers at one time */
-#define MAXSAUCERS 7
+#define MAXSAUCERS 4
 
 /* the maximum number of shot threads */
 #define MAXSHOTS 50
@@ -152,8 +152,8 @@ int main(int ac, char *av[]){
 	
 	/* found this section of code from http://bit.ly/19Px1R4 */
 	/* creates a 2D array */
-	array = calloc(NUMROW, sizeof(*array));
-	data = calloc(NUMROW * (COLS), sizeof(*data));
+/*NUMROW*/	array = calloc(LINES-1, sizeof(*array));
+/*NUMROW*/	data = calloc((LINES-1) * (COLS), sizeof(*data));
 	
 	/* error checking: calloc returns NULL if it failed */
 	if(array == NULL || data == NULL) {
@@ -162,7 +162,7 @@ int main(int ac, char *av[]){
 	}
 	
 	/* connect the rows and cols, now we can use array[i][j] */
-	for(i = 0; i < NUMROW; i++){
+/*NUMROW*/	for(i = 0; i < (LINES-1); i++){
 		array[i] = &data[i * (COLS-1)];
 	}
 	/* end section from stackoverflow */
@@ -243,7 +243,6 @@ int main(int ac, char *av[]){
 			shot_index ++;
 		}
 		
-
 /*
 		if(c >= '0' && c <= '9'){
 			i = c - '0';
@@ -341,13 +340,13 @@ void *saucers(void *properties){
 		collision_position[info->row][col+1].saucer); */
 		
 		/* for testing */
-		
+		/*
 		for(i=0;i<COLS-1; i++){
 			mvprintw((info->row)+NUMROW+1, i, "%d", 
 			collision_position[info->row][i].saucer);
 		} 
 		refresh(); 
-	
+	*/
 		/* unlock mutex protecting critical region */
 		pthread_mutex_unlock(&draw);
 
@@ -484,9 +483,30 @@ void *shots(void *properties){
 		/* cover the old shot */
 		mvaddch(info->row, info->col, ' ');
 		
+		if( info->row >= 0 && info->row < LINES-1){
+			collision_position[info->row][info->col].shot--;
+			
+		}
+		
 		/* draw the new shot */
 		info->row --;
 		mvaddch(info->row, info->col, '^');
+		
+		if( info->row >= 0 && info->row < LINES-1){
+		
+			collision_position[info->row][info->col].shot++;
+			
+			if(collision_position[info->row][info->col].shot + collision_position[info->row][info->col].saucer >1){
+				mvprintw(10, 10, "SCORE   %d", collision_position[info->row][info->col].saucer);
+				refresh();
+			}
+			//if(info->row-1 < NUMROW){
+			//mvprintw(info->row+1, info->col, "%d", collision_position[info->row+1][info->col].shot);
+			//	mvprintw(info->row, info->col, "%d", collision_position[info->row][info->col].shot);
+			
+				//}
+		}
+		
 		
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
