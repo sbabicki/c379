@@ -21,16 +21,16 @@
 
 
 /* limit of number of rows with saucers */
-#define NUMROW 2
+#define NUMROW 4
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 3
+#define	NUMSAUCERS 5
 
 /* number of initial shots limit */
 #define NUMSHOTS 5
 
 /* the maximum number of saucers at one time */
-#define MAXSAUCERS 5
+#define MAXSAUCERS 7
 
 /* the maximum number of shot threads */
 #define MAXSHOTS 50
@@ -341,12 +341,12 @@ void *saucers(void *properties){
 		collision_position[info->row][col+1].saucer); */
 		
 		/* for testing */
-		/*
+		
 		for(i=0;i<COLS-1; i++){
-			mvprintw(NUMROW+1, i, "%d", 
+			mvprintw((info->row)+NUMROW+1, i, "%d", 
 			collision_position[info->row][i].saucer);
 		} 
-		refresh(); */
+		refresh(); 
 	
 		/* unlock mutex protecting critical region */
 		pthread_mutex_unlock(&draw);
@@ -428,7 +428,7 @@ refresh(); */
 int launch_site(int direction, int position){
 	
 	/* if we are within the range of the screen move to new position */
-	if(position+direction >= 0 && position+direction < COLS-2){
+	if(position+direction >= 5 && position+direction < COLS-2){
 		
 		position = direction + position;
 		

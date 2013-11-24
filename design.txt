@@ -15,3 +15,5 @@ Mutexes
 Condition Variables
 
 
+game specifics 
+	rand & srand for speed and row
