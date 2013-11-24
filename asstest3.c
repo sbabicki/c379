@@ -48,6 +48,7 @@ struct saucerprop{
 	int index;	/* element # in thrd array */
 	int col1;
 	int col2;
+	int kill; 	/* 0 for survive 1 for kill */
 
 };
 
@@ -60,6 +61,8 @@ struct shotprop{
 struct screen{
 	int shot;
 	int saucer;
+	pthread_t thread[MAXSAUCERS];
+	int there;
 };
 
 /* collision detection array */
@@ -152,8 +155,8 @@ int main(int ac, char *av[]){
 	
 	/* found this section of code from http://bit.ly/19Px1R4 */
 	/* creates a 2D array */
-/*NUMROW*/	array = calloc(LINES-1, sizeof(*array));
-/*NUMROW*/	data = calloc((LINES-1) * (COLS), sizeof(*data));
+	array = calloc(LINES-1, sizeof(*array));
+	data = calloc((LINES-1) * (COLS), sizeof(*data));
 	
 	/* error checking: calloc returns NULL if it failed */
 	if(array == NULL || data == NULL) {
@@ -162,7 +165,7 @@ int main(int ac, char *av[]){
 	}
 	
 	/* connect the rows and cols, now we can use array[i][j] */
-/*NUMROW*/	for(i = 0; i < (LINES-1); i++){
+	for(i = 0; i < (LINES-1); i++){
 		array[i] = &data[i * (COLS-1)];
 	}
 	/* end section from stackoverflow */
@@ -308,7 +311,9 @@ void *saucers(void *properties){
 	void *retval;
 	
 	while(1){
-		
+		if(info->kill == 1){
+			pthread_exit(retval);
+		}
 		/* thread sleeps for (its delay time * defined timeunits) */
 		usleep(info->delay*TUNIT);
 
@@ -327,11 +332,15 @@ void *saucers(void *properties){
 			
 			/* add new position and remove old position */
 			collision_position[info->row][col+1+i].saucer ++;
+			collision_position[info->row][col+1+i].thread[info->index] = pthread_self();
+			collision_position[info->row][col+1+i].there = 1;
 			if(col>0){
 				collision_position[info->row][col+i].saucer --;
 			}
 		}
-		
+		/* only remove the one column that changed */
+		collision_position[info->row][col].thread[info->index] = 0;
+		collision_position[info->row][col].there = 0;
 		/* for testing */
 		/* mvprintw(3, col, "%d", 
 		collision_position[info->row][col].saucer); 
@@ -457,6 +466,7 @@ int launch_site(int direction, int position){
 void *shots(void *properties){
 	
 	int hit = 0;
+	int i;
 	struct shotprop *info = properties;
 	void *retval;
 	
@@ -498,8 +508,16 @@ void *shots(void *properties){
 			collision_position[info->row][info->col].shot ++;
 			
 			/* 1 shot + >= 0 saucers, depending on the saucers */
-			hit = collision_position[info->row][info->col].shot + 
-			collision_position[info->row][info->col].saucer;
+			hit = collision_position[info->row][info->col].shot + collision_position[info->row][info->col].saucer;
+			for(i = 0; i<MAXSAUCERS; i++){
+				if(collision_position[info->row][info->col].there != 0){
+					//pthread_cancel(collision_position[info->row][info->col].thread[i]);
+					saucerinfo[i].kill = 1;
+					mvprintw(10,10, "HIT");
+					refresh();
+				}
+			}
+			
 		}
 		
 		/* move cursor back and output changes on the screen */
