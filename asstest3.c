@@ -21,16 +21,16 @@
 
 
 /* limit of number of rows with saucers */
-#define NUMROW 1
+#define NUMROW 5
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 4
+#define	NUMSAUCERS 5
 
 /* number of initial shots limit */
 #define NUMSHOTS 5
 
 /* the maximum number of saucers at one time */
-#define MAXSAUCERS 4
+#define MAXSAUCERS 10
 
 /* the maximum number of shot threads */
 #define MAXSHOTS 50
@@ -304,8 +304,7 @@ void *saucers(void *properties){
 	char *shape = " <--->";
 	int len = strlen(shape);
 	int len2 = len;
-/*for testing only*/	int col = 0;	
-/* int col = -1*rand()%(COLS-len-3); */	/* random column to start at */
+	int col = 0;	
 	void *retval;
 	
 	while(1){
@@ -457,6 +456,7 @@ int launch_site(int direction, int position){
  */
 void *shots(void *properties){
 	
+	int hit = 0;
 	struct shotprop *info = properties;
 	void *retval;
 	
@@ -480,38 +480,45 @@ void *shots(void *properties){
 		
 		pthread_mutex_lock(&draw);
 		move(LINES-1, COLS-1);
+		
 		/* cover the old shot */
 		mvaddch(info->row, info->col, ' ');
 		
+		/* remove the old position from the collision array */
 		if( info->row >= 0 && info->row < LINES-1){
-			collision_position[info->row][info->col].shot--;
-			
+			collision_position[info->row][info->col].shot --;	
 		}
 		
-		/* draw the new shot */
+		/* draw the new shot at the new position one row up */
 		info->row --;
 		mvaddch(info->row, info->col, '^');
 		
+		/* update the position in the collision array */
 		if( info->row >= 0 && info->row < LINES-1){
-		
-			collision_position[info->row][info->col].shot++;
+			collision_position[info->row][info->col].shot ++;
 			
-			if(collision_position[info->row][info->col].shot + collision_position[info->row][info->col].saucer >1){
-				mvprintw(10, 10, "SCORE   %d", collision_position[info->row][info->col].saucer);
-				refresh();
-			}
-			//if(info->row-1 < NUMROW){
-			//mvprintw(info->row+1, info->col, "%d", collision_position[info->row+1][info->col].shot);
-			//	mvprintw(info->row, info->col, "%d", collision_position[info->row][info->col].shot);
-			
-				//}
+			/* 1 shot + >= 0 saucers, depending on the saucers */
+			hit = collision_position[info->row][info->col].shot + 
+			collision_position[info->row][info->col].saucer;
 		}
-		
 		
 		/* move cursor back and output changes on the screen */
 		move(LINES-1, COLS-1);
 		refresh();
 		pthread_mutex_unlock(&draw);
+		
+		/* update the score if there is a collision */
+		if(hit >1){
+			pthread_mutex_lock(&score_mutex);
+			
+			/* hit minus 1 because 1 is from the shot */
+			score_update = score_update + hit-1;
+			stats();
+			
+			/* reset hit so the shot can hit other saucers */
+			hit = 0;
+			pthread_mutex_unlock(&score_mutex);
+		}
 		
 		/* if reach the top of the screen without hitting anything */
 		if(info->row < 0){
