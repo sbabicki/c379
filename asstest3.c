@@ -21,7 +21,7 @@
 
 
 /* limit of number of rows with saucers */
-#define NUMROW 3
+#define NUMROW 2
 
 /* number of initial saucers to display at the start of the program */
 #define	NUMSAUCERS 3
@@ -176,7 +176,10 @@ int main(int ac, char *av[]){
 	/* draw original launch site in the middle of the screen */
 	launch_position = (COLS-1)/2;
 	launch_site(0, launch_position);
-
+	
+	/* set a seed so rand() results will be different each game */
+	srand(getpid());
+	
 	/* create a thread for each initial saucer */
 	for(i=0; i<NUMSAUCERS; i++){
 		
@@ -196,7 +199,7 @@ int main(int ac, char *av[]){
 		
 		/* Add more saucers at random */
 		/* The more shots taken, the more saucers added */
-		/*if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
+		if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
 			setup_saucer(nsaucers);
 			if (pthread_create(&thrds[nsaucers], NULL, saucers, &saucerinfo[nsaucers])){
 				fprintf(stderr,"error creating saucer thread");
@@ -204,7 +207,7 @@ int main(int ac, char *av[]){
 				exit(-1);
 			}
 			nsaucers ++;
-		}*/
+		}
 		
 		/* read character from input and store in variable c */
 		c = getch();
@@ -283,9 +286,8 @@ void stats( ){
  * setup_saucer populates one element (specified by i) in saucerinfo
  */ 
 void setup_saucer(int i){
-	
-	srand(2*(escape_update+score_update) +i);
-	saucerinfo[i].row = (i+3)%NUMROW;
+
+	saucerinfo[i].row = (rand())%NUMROW;
 	saucerinfo[i].delay = 1+(rand()%15);
 	saucerinfo[i].index = i;
 }
@@ -308,8 +310,6 @@ void *saucers(void *properties){
 	void *retval;
 	
 	while(1){
-		
-		
 		
 		/* thread sleeps for (its delay time * defined timeunits) */
 		usleep(info->delay*TUNIT);
@@ -396,32 +396,32 @@ void *replace_thread(){
 	
 	while(1){
 
-	/* wait until given the signal to replace a thread */
-	pthread_mutex_lock(&replace_mutex);
-	pthread_cond_wait(&replace_condition, &replace_mutex);
+		/* wait until given the signal to replace a thread */
+		pthread_mutex_lock(&replace_mutex);
+		pthread_cond_wait(&replace_condition, &replace_mutex);
 	
 /* testing purposes */	
 /* mvprintw(10, 0, "index: %d", replace_index);
 refresh(); */
 	
-	/* wait until a thread terminates for sure before replacing it */
-	pthread_join(thrds[replace_index], &retval);
+		/* wait until a thread terminates for sure before replacing it */
+		pthread_join(thrds[replace_index], &retval);
 	
-	/* optional delay */
-	/* sleep(2); */
+		/* optional delay */
+	 	//sleep(2); 
 	
-	/* populate a new saucer and create new thread reusing an old index */
-	setup_saucer(replace_index);
-	if (pthread_create(&thrds[replace_index], NULL, saucers, &saucerinfo[replace_index])){
-		fprintf(stderr,"error creating saucer thread");
-		endwin();
-		exit(-1);
-	}
+		/* populate a new saucer and create new thread reusing an old index */
+		setup_saucer(replace_index);
+		if (pthread_create(&thrds[replace_index], NULL, saucers, &saucerinfo[replace_index])){
+			fprintf(stderr,"error creating saucer thread");
+			endwin();
+			exit(-1);
+		}
 	
 /*testing purposes*/
 /* mvprintw(10, 0, "index: %d", replace_index); 
 refresh(); */
-	pthread_mutex_unlock(&replace_mutex);
+		pthread_mutex_unlock(&replace_mutex);
 	}
 }
 
@@ -464,6 +464,12 @@ void *shots(void *properties){
 	/* initial row at bottom of screen */
 	info->row = LINES - 3;
 	
+	/* update the score now that a shot has been used */
+	pthread_mutex_lock(&score_mutex);
+	rockets_update --;
+	stats();
+	pthread_mutex_unlock(&score_mutex);
+	
 /* for testing */ 
 /* mvprintw(LINES - 3, 0, "column #%d, shot #%d", info->col, info->index);
 */
@@ -489,12 +495,6 @@ void *shots(void *properties){
 		
 		/* if reach the top of the screen without hitting anything */
 		if(info->row < 0){
-			
-			/* update the score now that a shot missed */
-			pthread_mutex_lock(&score_mutex);
-			rockets_update --;
-			stats();
-			pthread_mutex_unlock(&score_mutex);
 			
 			/* now we are finished with the thread */
 			pthread_exit(retval);
