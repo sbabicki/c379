@@ -98,24 +98,14 @@ int main(int ac, char *av[]){
 	int shot_index = 0;
 	void *retval;
 	
-	//void *collision_array;
-	
-	/* collision detection */
-	//struct screen collision[LINES-1][COLS-1];
-	
 	/* id for the thread that handles assigning replacements */
 	pthread_t replace_t;
 
-	//struct shotprop shotinfo[NUMSHOTS];
 	struct rlimit rlim;
 	
 	/* for creating the 2D array used for collision detection */
 	struct screen **array;
 	struct screen *data;
-
-	/* arrays for saucers and shots */
-	//char *saucerarray[NUMSAUCERS];
-	//char *shotarray[NUMSHOTS];
 	
 	/* function prototypes */
 	void stats();
@@ -124,6 +114,7 @@ int main(int ac, char *av[]){
 	void *replace_thread();
 	int launch_site();
 	void setup_saucer();
+	void welcome();
 
         /* number of saucers */
 	int nsaucers = NUMSAUCERS;
@@ -154,6 +145,9 @@ int main(int ac, char *av[]){
 	crmode();
 	noecho();
 	clear();
+	
+	/* print opening message with instructions */
+	welcome();
 	
 	/* found this section of code from http://bit.ly/19Px1R4 */
 	/* creates a 2D array */
@@ -254,6 +248,7 @@ int main(int ac, char *av[]){
 					
 					/* wait until no chance of hitting another saucer */
 					pthread_join(shot_t[shot_index], &retval);
+					/* check if the last shot was fired, if so exit the game */
 					if(shot_update == 0){
 						break;	
 					}
@@ -264,50 +259,33 @@ int main(int ac, char *av[]){
 			}	
 			
 		}
-		
-		
-		/* check if the last shot was fired, if so exit the game */
-		if(shot_update == 0){
-			
-		}
-		
-/*
-		if(c >= '0' && c <= '9'){
-			i = c - '0';
-		}
-*/	
+	
 	}
+	
+	/* make sure the other threads won't keep updating the screen */
+	pthread_mutex_lock(&draw);
+	
+	/* erase everything on the screen for closing message*/
+	erase();
 	
 	/* if the game ends by running out of shots */
 	if(shot_update == 0){
 		
-		/* make sure the other threads won't keep updating the screen */
-		pthread_mutex_lock(&draw);
-		
-		/* erase everything on the screen */
-		erase();
-		
-		/* print closing message */
+		/* print closing ran out of rockets closing message */
 		mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "YOU RAN OUT OF ROCKETS :(");
-		mvprintw(LINES/2 - LINES/4 +1, COLS/2 - COLS/3, "Final score: %d", score_update);
-		mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "Thanks for playing!", score_update);
-		refresh();
-		
-		/* pause to allow user to read the exit message */
-		for(i = 0; i<10; i++){
-			sleep(1);
-			
-			/* allow user to quit if they are getting bored */
-			c = getch();
-			if(c == 'Q'){
-				break;
-			}
-		}
-		pthread_mutex_unlock(&draw);
 	}
 	
+	/* closing message */
+	mvprintw(LINES/2 - LINES/4 +1, COLS/2 - COLS/3, "Final score: %d", score_update);
+	mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "Thanks for playing!", score_update);
+	mvprintw(LINES/2 - LINES/4 +4, COLS/2 - COLS/3, "(Press any key to exit)", score_update);
+	refresh();
+	
+	/* allow user to exit after 2 seconds */
+	sleep(2);
+	c = getch();
+	
 	/* cancel all active threads */
-	pthread_mutex_lock(&draw);
 	for(i=0; i<nsaucers; i++){
 		pthread_cancel(thrds[i]);
 	}
@@ -641,4 +619,40 @@ void *shots(void *properties){
 			pthread_exit(retval);
 		}
 	}
+}
+
+void welcome(){
+	int c; 
+	
+	mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "Welcome to SAUCER!");
+	
+	mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "Press '.' to view the rest of the instructions");
+	mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3, "Or press space to skip the instructions and start playing");
+	refresh();
+	
+	while(1){
+		c = getch();
+		if(c == '.'){
+			mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "Aliens are trying to invade your homeland!!!!");
+			mvprintw(LINES/2 - LINES/4 +1, COLS/2 - COLS/3, "In order to stop them you must shoot down their saucers from the sky");
+			mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "You only have a set number of rockets so use them wisely");
+			mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3, "The game will end when you have run out of rockets or if you have let too many saucers escape");
+			mvprintw(LINES/2 - LINES/4 +4, COLS/2 - COLS/3, "Each saucer you shoot down will give you one new rocket");
+			mvprintw(LINES/2 - LINES/4 +5, COLS/2 - COLS/3, "Information about your score is printed at the bottom of the page");
+			mvprintw(LINES/2 - LINES/4 +6, COLS/2 - COLS/3, "Press space to shoot, ',' to move your launchpad right, and '.' to move your launchpad left");
+			mvprintw(LINES/2 - LINES/4 +7, COLS/2 - COLS/3, "If you would like to quit the game at any time before you run out of rockets, press 'Q'");
+			mvprintw(LINES/2 - LINES/4 +10, COLS/2 - COLS/3, "(Press any key to start the game)");
+			refresh();
+			
+			c = getch();
+			erase();
+			break;
+			
+		}
+		else if (c == ' '){
+			erase();
+			break;
+		}
+	}
+	
 }
