@@ -2,6 +2,7 @@ Functions
 	launch_site etc
 	
 Collision detection
+	kill signal
 
 Threads
 	//replace etc

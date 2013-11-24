@@ -27,7 +27,7 @@
 #define	NUMSAUCERS 5
 
 /* number of initial shots limit */
-#define NUMSHOTS 10
+#define NUMSHOTS 5
 
 /* the maximum number of saucers at one time */
 #define MAXSAUCERS 10
@@ -96,6 +96,7 @@ int main(int ac, char *av[]){
 	int i, c;
 	int launch_position;
 	int shot_index = 0;
+	void *retval;
 	
 	//void *collision_array;
 	
@@ -200,7 +201,7 @@ int main(int ac, char *av[]){
 	
 	/* process user input */
 	while(1){
-		
+
 		/* Add more saucers at random */
 		/* The more shots taken, the more saucers added */
 		if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
@@ -236,20 +237,38 @@ int main(int ac, char *av[]){
 		/* fire one shot */
 		else if(c == ' '){
 			
-			/* loop to begining of the array */
-			if(shot_index == MAXSHOTS){
-				shot_index = 0;
-			}
-			
 			/* if we are not out of shots fire the next one */
-			if(shot_update != 0){
+			if(shot_update > 0){
+				/* loop to begining of the array */
+				if(shot_index == MAXSHOTS){
+					shot_index = 0;
+				}
 				
-			/* set cols/index. pos + 1 b/c of the space before | */
-			shotinfo[shot_index].col = launch_position + 1;
-			shotinfo[shot_index].index = shot_index;
-			pthread_create(&shot_t[shot_index], NULL, shots, &shotinfo[shot_index]);
-			shot_index ++;
-			}
+				/* set cols/index. pos + 1 b/c of the space before | */
+				shotinfo[shot_index].col = launch_position + 1;
+				shotinfo[shot_index].index = shot_index;
+				pthread_create(&shot_t[shot_index], NULL, shots, &shotinfo[shot_index]);
+				
+				/* don't know if 1 or 0, depending on where thread is */
+				if(shot_update <= 1){
+					
+					/* wait until no chance of hitting another saucer */
+					pthread_join(shot_t[shot_index], &retval);
+					if(shot_update == 0){
+						break;	
+					}
+				}
+			
+				/* move to next shot */
+				shot_index ++;
+			}	
+			
+		}
+		
+		
+		/* check if the last shot was fired, if so exit the game */
+		if(shot_update == 0){
+			
 		}
 		
 /*
@@ -258,9 +277,37 @@ int main(int ac, char *av[]){
 		}
 */	
 	}
-
-	/* cancel all the threads */
-/*mx?*/	pthread_mutex_lock(&draw);
+	
+	/* if the game ends by running out of shots */
+	if(shot_update == 0){
+		
+		/* make sure the other threads won't keep updating the screen */
+		pthread_mutex_lock(&draw);
+		
+		/* erase everything on the screen */
+		erase();
+		
+		/* print closing message */
+		mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "YOU RAN OUT OF ROCKETS :(");
+		mvprintw(LINES/2 - LINES/4 +1, COLS/2 - COLS/3, "Final score: %d", score_update);
+		mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "Thanks for playing!", score_update);
+		refresh();
+		
+		/* pause to allow user to read the exit message */
+		for(i = 0; i<10; i++){
+			sleep(1);
+			
+			/* allow user to quit if they are getting bored */
+			c = getch();
+			if(c == 'Q'){
+				break;
+			}
+		}
+		pthread_mutex_unlock(&draw);
+	}
+	
+	/* cancel all active threads */
+	pthread_mutex_lock(&draw);
 	for(i=0; i<nsaucers; i++){
 		pthread_cancel(thrds[i]);
 	}
