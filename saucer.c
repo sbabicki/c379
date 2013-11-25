@@ -18,10 +18,9 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-/* CHANGABLE MACROS: */
-
+/* ~~~~ CHANGABLE MACROS: ~~~~*/
 /* the maximum number of rows with saucers on them */
-#define NUMROW 5
+#define NUMROW 2
 
 /* number of initial saucers to display at the start of the program */
 #define	NUMSAUCERS 5
@@ -38,37 +37,36 @@
 /* number of initial shots limit */
 #define NUMSHOTS 20
 
-/* delay for the saucers, higher number = slower saucers */
+/* delay for the saucers, higher number = slower saucers. 20000 recomended */
 #define	SAUCERSPEED 20000
 
-/* delay of the shots, higher number = slower shots */
+/* delay of the shots, higher number = slower shots. 60000 recomended */
 #define SHOTSPEED 60000
-
-/* END CHANGABLE MACROS */
-
+/* ~~~~ END CHANGABLE MACROS ~~~~ */
 
 /* the maximum number of shot threads */
 #define MAXSHOTS 50
 
 struct saucerprop{
-	int row;	/* the row position on screen */
-	int delay;  	/* delay in time units */
-	int index;	/* element # in thrd array */
-	int kill; 	/* 0 for survive 1 for kill */
-
+	int row;	
+	int delay;
+		
+	/* element # in thread array */
+	int index;
+	
+	/* 0 default, set to 1 for kill */	
+	int kill;
 };
 
 struct shotprop{
 	int col;	
 	int row;
-	int index;
-	int kill;
 };
 
 struct screen{
 	int shot;
 	int saucer;
-	int there[MAXSAUCERS];
+	int here[MAXSAUCERS];
 };
 
 /* collision detection array */
@@ -99,6 +97,22 @@ pthread_t shot_t[MAXSHOTS];
 /* for storing the properties of saucers and shots */
 struct saucerprop saucerinfo[MAXSAUCERS];
 struct shotprop shotinfo[MAXSHOTS];
+
+
+/* lock the mutex protecting a critical region that involves printing output */
+void lock_draw(){
+	pthread_mutex_lock(&draw);
+	move(LINES-1, COLS-1);
+}
+
+/* move cursor back and output changes on the screen */
+/* unlock mutex protecting critical region */
+void unlock_draw(){
+	
+	move(LINES-1, COLS-1);
+	refresh();
+	pthread_mutex_unlock(&draw);
+}
 
 /*
  * main does some simple error checking and setup as well as some closing tasks
@@ -196,7 +210,7 @@ int main(int ac, char *av[]){
 	pthread_cond_wait(&end_condition, &end_mutex);
 	
 	/* make sure the other threads won't keep updating the screen */
-	pthread_mutex_lock(&draw);
+	lock_draw();
 	
 	/* erase everything on the screen in prep for closing message */
 	erase();
@@ -264,8 +278,8 @@ void *process_input(){
 	int i, c;
 	int launch_position = (COLS-1)/2;
 	int nsaucers = NUMSAUCERS;
-	int shot_index = 0;
-	void *rval;
+	int shot_i = 0;
+	void *retval;
 	
 	/* function prototypes */
 	void stats();
@@ -274,6 +288,8 @@ void *process_input(){
 	void *replace_thread();
 	int launch_site();
 	void setup_saucer();
+	int fire_shot();
+	int rand_saucers();
 	
 	/* print message with info about the game @ the bottom of the page */
 	stats();
@@ -300,20 +316,11 @@ void *process_input(){
 	
 	/* process user input */
 	while(1){
-
+		
 		/* Add more saucers at random */
 		/* The more shots taken, the more saucers added */
 		if(rand()%RANDSAUCERS == 0 && nsaucers < MAXSAUCERS){
-			setup_saucer(nsaucers);
-			if (pthread_create(&saucer_t[nsaucers], NULL, saucers, /* over */
-			    &saucerinfo[nsaucers])){
-				fprintf(stderr,"error creating saucer thrd\n");
-				endwin();
-				exit(-1);
-			}
-			
-			/* new number of saucers */
-			nsaucers ++;
+			nsaucers = rand_saucers(nsaucers);
 		}
 		
 		/* read character from input and store in variable c */
@@ -342,64 +349,101 @@ void *process_input(){
 		/* fire one shot */
 		else if(c == ' '){
 			
-			/* if we are not out of shots fire the next one */
+			/* if we are not out of shots yet fire the next one */
 			if(shot_update > 0){
+				shot_i = fire_shot(shot_i, launch_position);
 				
-				/* loop to begining of the array */
-				if(shot_index == MAXSHOTS){
-					shot_index = 0;
+				/* fire_shot returns val<0 if no more shots */
+				if(shot_i < 0){
+					pthread_exit(retval);
 				}
-				
-				/* set row/col for the shot */
-				/* pos + 1 b/c of the space before | */
-				shotinfo[shot_index].col = launch_position + 1;
-				shotinfo[shot_index].index = shot_index;
-				
-				/* create a thread for the shot */
-				if(pthread_create(&shot_t[shot_index], NULL, /* over */
-				    shots, &shotinfo[shot_index])){
-					fprintf(stderr,"error creating shot t");
-					endwin();
-					exit(-1);
-				}
-				
-				/* 1 or 0, depending on where shot thread is */
-				if(shot_update <= 1){
-					
-					/* no chance of hitting other saucer */
-					pthread_join(shot_t[shot_index], &rval);
-					
-					/* if the last shot fired: exit game */
-					if(shot_update == 0){
-						pthread_mutex_lock(&end_mutex);
-						pthread_cond_signal(&end_condition); /* over */
-						pthread_mutex_unlock(&end_mutex);
-						break;
-					}
-				}
-			
-				/* move to next shot */
-				shot_index ++;
-			}	
+			}
 		}
 	}
-	pthread_exit(rval);
+	pthread_exit(retval);
+}
+
+/* 
+ * rand_saucers adds a new saucer 
+ * expects the current number of active saucers, returns the new number saucers
+ */
+int rand_saucers(int n){
+	void *saucers();
+	void setup_saucer();
+	
+	/* populate saucerinfo */
+	setup_saucer(n);
+	
+	/* create a saucer thread */
+	if (pthread_create(&saucer_t[n], NULL, saucers, &saucerinfo[n])){
+		fprintf(stderr,"error creating saucer thread\n");
+		endwin();
+		exit(-1);
+	}
+		
+	/* new number of saucers */
+	n ++;
+	return n;
+}
+
+/* 
+ * fire shot creates a new shot
+ * expects the current index of the shot_t array and the current launch position
+ * if there are no shots left, returns -1, otherwise returns the new index
+ */
+int fire_shot(int index, int launch_position){
+	
+	void *retval;
+	void *shots();
+	
+	/* loop to begining of the array */
+	if(index == MAXSHOTS){
+		index = 0;
+	}
+	
+	/* set row & col for the shot (pos + 1 b/c of the space before | )*/
+	shotinfo[index].col = launch_position + 1;
+	
+	/* create a thread for the shot */
+	if(pthread_create(&shot_t[index], NULL, shots, &shotinfo[index])){
+		fprintf(stderr,"error creating shot thread\n");
+		endwin();
+		exit(-1);
+	}
+	
+	/* may be 1 or 0, depending on where shot thread is at */
+	if(shot_update <= 1){
+		
+		/* no chance of hitting any other saucers */
+		pthread_join(shot_t[index], &retval);
+		
+		/* if the last shot fired: signal to exit game */
+		if(shot_update == 0){
+			pthread_mutex_lock(&end_mutex);
+			pthread_cond_signal(&end_condition); 
+			pthread_mutex_unlock(&end_mutex);
+			return -1;
+		}
+	}
+
+	/* move to next shot */
+	index ++;
+	return index;
 }
 
 /* 
  * stats prints the # of rockets left and # of missed saucers on the screen
+ * uses the draw mutex so draw must be unlocked before entering stats
+ * expects no args & no return values
  */
-void stats( ){
+void stats(){
 		
 	/* print message at bottom of the screen */
-	pthread_mutex_lock(&draw);
-	move(LINES-1, COLS-1);
+	lock_draw();
 	mvprintw(LINES-1,0,
 	    "score:%d, rockets remaining: %d, escaped saucers: %d/%d    ", /* over */
 	    score_update, shot_update, escape_update, MAXESCAPE);
-	move(LINES-1, COLS-1);
-	refresh();
-	pthread_mutex_unlock(&draw);
+	unlock_draw();
 }
 
 /* 
@@ -411,6 +455,50 @@ void setup_saucer(int i){
 	saucerinfo[i].row = (rand())%NUMROW;
 	saucerinfo[i].delay = 1+(rand()%15);
 	saucerinfo[i].index = i;
+}
+
+
+void saucer_hit(int len, int col, struct saucerprop *info, char *shape){
+	
+	int i;
+	int row = info->row;
+	int index = info->index;
+
+	lock_draw();
+	
+	/* draw over the saucer to remove it from the screen */
+	mvaddnstr(row, col, shape, len);
+	
+	/* remove saucer position from the collision array */
+	for(i = 0; i < len-1; i++){
+		collision_position[row][col+i].saucer --;
+		collision_position[row][col+i].here[index] = 0; 
+		info->kill = 0;
+	}
+	
+	/* signal to replace the thread at that index */
+	pthread_mutex_lock(&replace_mutex);
+	
+	/* set global to index that can be replaced */
+	replace_index = index;
+	pthread_cond_signal(&replace_condition);
+	pthread_mutex_unlock(&replace_mutex);
+	
+	unlock_draw();
+	
+}
+
+/* 
+ * new_saucer_position updates adds information in the collision array
+ * expects a row, column, and index. returns nothing 
+ */
+void new_saucer_position(int row, int col, int index){
+	
+	/* add new position and remove old position */
+	collision_position[row][col].saucer ++;
+	
+	/* provide a sign that this saucer is at that spot */
+	collision_position[row][col].here[index] = 1;
 }
 
 /* 
@@ -435,54 +523,30 @@ void *saucers(void *properties){
 	/* update the saucers */
 	while(1){
 		
-		/* thread sleeps for (its delay time * defined timeunits) */
-		usleep(info->delay*SAUCERSPEED);
-
-		/* lock the draw mutex CRITICAL REGION BELOW */
-		pthread_mutex_lock(&draw);
-		move(LINES-1, COLS-1);
-		
 		/* remove the saucer if kill is set for that saucer */
 		if(info->kill == 1){
-			move(LINES-1, COLS-1);
 			
-			/* draw over the saucer to remove it from the screen */
-			mvaddnstr(info->row, col, shape2, len2);
-			
-			/* remove saucer position from the collision array */
-			for(i = 0; i < len-1; i++){
-				collision_position[info->row][col+i].saucer --;
-				collision_position[info->row][col+i].there[info->index] = 0; /* over */
-				info->kill = 0;
-			}
-			
-			/* signal to replace the thread at that index */
-			pthread_mutex_lock(&replace_mutex);
-			
-			/* set global to index that can be replaced */
-			replace_index = info->index;
-			pthread_cond_signal(&replace_condition);
-			pthread_mutex_unlock(&replace_mutex);
-			
-			move(LINES-1, COLS-1);
-			pthread_mutex_unlock(&draw);
+			/* remove saucer info */
+			saucer_hit(len2, col, info, shape2);
 			
 			/* finish with the thread */
 			pthread_exit(retval);
 		}
 		
+		/* thread sleeps for (its delay time * defined timeunits) */
+		usleep(info->delay*SAUCERSPEED);
+		
+		/* lock the draw mutex CRITICAL REGION BELOW */
+		lock_draw();
 		
 		/* print the saucer on the screen at (row, col) */
 		mvaddnstr(info->row, col, shape, len2);
 		
-		/* update collision array. len-1 because of the extra space */
+		/* update collision array. len2-1 because of the extra space */
 		for(i=0; i<len2-1; i++){
 			
-			/* add new position and remove old position */
-			collision_position[info->row][col+1+i].saucer ++;
-			
-			/* provide a sign that this saucer is at that spot */
-			collision_position[info->row][col+1+i].there[info->index] = 1; /* over */
+			/* sets saucer and there[i] in collision array*/
+			new_saucer_position(info->row, col+1+i, info->index);
 			
 			/* remove old position if not first time through loop */
 			if(col>0){
@@ -490,20 +554,18 @@ void *saucers(void *properties){
 			}
 		}
 		
-		/* only remove the one column that changed */
-		collision_position[info->row][col].there[info->index] = 0;
+		/* only remove the one column that changed in collision array */
+		collision_position[info->row][col].here[info->index]= 0;
 		
+		/*
 		for(i = 0; i < COLS-1; i++){
 			mvprintw(info->row+NUMROW, i, "%d", collision_position[info->row][i].saucer);
-			//mvprintw(info->row+2*NUMROW+1, i, "%d", collision_position[info->row][i].there[info->index]);
+			mvprintw(info->row+2*NUMROW+1, i, "%d", collision_position[info->row][i].here[info->index]);
 		}
+		*/
 		
 		/* move cursor back and output changes on the screen */
-		move(LINES-1, COLS-1);
-		refresh();
-
-		/* unlock mutex protecting critical region */
-		pthread_mutex_unlock(&draw);
+		unlock_draw();
 
 		/* move to next column */
 		col ++;
@@ -555,10 +617,12 @@ void *saucers(void *properties){
  * it replaces a saucer thread that has finished running with a new saucer 
  * allows many threads to be created but only a fixed number of active threads
  * and a set amount of threads to be stored in an array
+ * expects no args & no return values
  */
 void *replace_thread(){
 	
 	void *retval;
+	int i;
 	
 	while(1){
 
@@ -568,14 +632,15 @@ void *replace_thread(){
 
 		/* wait until thread terminates for sure before replacing it */
 		pthread_join(saucer_t[replace_index], &retval);
+		
+		i = replace_index;
 	
 		/* optional delay */
 	 	/* sleep(2); */
 	
 		/* populate new saucer + create new thread reusing old index */
 		setup_saucer(replace_index);
-		if (pthread_create(&saucer_t[replace_index], NULL, saucers, /* over */
-		    &saucerinfo[replace_index])){
+		if(pthread_create(&saucer_t[i], NULL, saucers, &saucerinfo[i])){
 			fprintf(stderr,"error creating saucer thread");
 			endwin();
 			exit(-1);
@@ -597,20 +662,55 @@ int launch_site(int direction, int position){
 		position = direction + position;
 		
 		/* draw new position on screen */
-		pthread_mutex_lock(&draw);
-		move(LINES-1, COLS-1);
+		lock_draw();
 		mvaddstr(LINES-2, position, " | ");
-	
-		/* move cursor back and output changes on the screen */
-		move(LINES-1, COLS-1);
-		refresh();
-
-		/* unlock mutex protecting critical region */
-		pthread_mutex_unlock(&draw);
+		unlock_draw();
 	}
 	
 	/* returns old pos if request was out of range, otherwise returns new */
 	return position;
+}
+
+
+/*
+ * find hit locates hit saucers, draws over a shot at a given position,
+ * and adds 1 point to the score+shots
+ * NOTE: must have draw mutex locked before entering function 
+ * expects row and col as args, returns nothing
+ */
+void find_hit(int row, int col){
+	int i; 
+	int hits = 0;
+	
+	for(i = 0; i<MAXSAUCERS; i++){
+	
+		/* check if any saucer thread is a hit */
+		if(collision_position[row][col].here[i] != 0){
+			
+			/* draw over shot */
+			mvaddch(row, col, ' ');
+	
+			/* set kill for hit saucers */
+			saucerinfo[i].kill = 1;
+			
+			/* keep track of how many saucers were hit */
+			hits++;
+			
+			
+		}
+	}
+	unlock_draw();
+	
+	/* update the score */
+	pthread_mutex_lock(&score_mutex);
+
+	/* add one point to the score */
+	score_update = score_update + hits; 
+
+	/* reward a hit with more shots */
+	shot_update = shot_update + hits; 
+	stats();
+	pthread_mutex_unlock(&score_mutex);
 }
 
 /* 
@@ -620,7 +720,7 @@ int launch_site(int direction, int position){
  * in this program, returns nothing
  */
 void *shots(void *properties){
-	
+
 	int hit = 0;
 	int i;
 	struct shotprop *info = properties;
@@ -640,8 +740,7 @@ void *shots(void *properties){
 		/* specify the delay in SHOTSPEED */
 		usleep(SHOTSPEED);
 		
-		pthread_mutex_lock(&draw);
-		move(LINES-1, COLS-1);
+		lock_draw();
 		
 		/* cover the old shot */
 		mvaddch(info->row, info->col, ' ');
@@ -651,61 +750,30 @@ void *shots(void *properties){
 			collision_position[info->row][info->col].shot --;	
 		}
 		
-		/* draw the new shot at the new position one row up */
+		/* the new position one row up */
 		info->row --;
-		mvaddch(info->row, info->col, '^');
 		
 		/* update the new position in the collision array */
 		if( info->row >= 0 && info->row < LINES-1){
 			collision_position[info->row][info->col].shot ++;
 			
-			/* 1 shot + >= 0 saucers, depending on the saucers */
-			hit = collision_position[info->row][info->col].shot + 
-				collision_position[info->row][info->col].saucer;/* over */
-			for(i = 0; i<MAXSAUCERS; i++){
+			/* hit = # of saucers at that position */
+			hit = collision_position[info->row][info->col].saucer;
+			if(hit > 0){
 				
-				/* check if any saucer thread is a hit */
-				if(collision_position[info->row][info->col].there[i] != 0){
-					
-					/* set kill signal for hit saucers */
-					saucerinfo[i].kill = 1;
-				}
-			}
-			
-			/* update the score if there is a collision */
-			if(hit >1){
-				
-				/* draw over shot */
-				mvaddch(info->row, info->col, ' ');
-				
-				/* remove the collision position */
-				collision_position[info->row][info->col].shot --;
-				
-				/* print changes to the screen */
-				move(LINES-1, COLS-1);
-				refresh();
-				pthread_mutex_unlock(&draw);
+				/* find hits and update score, release draw */
+				find_hit(info->row, info->col);
 		
-				/* update the score */
-				pthread_mutex_lock(&score_mutex);
-			
-				/* hit minus 1 because 1 is from the shot */
-				score_update = score_update + hit-1;
-			
-				/* reward a hit with more shots */
-				shot_update = shot_update + hit-1;
-				stats();
-				pthread_mutex_unlock(&score_mutex);
-				
-				/* we are done with this shot */
+				/* now we are done with this shot */
 				pthread_exit(retval);
 			}
 		}
 		
+		/* draw the new shot at the new position one row up */
+		mvaddch(info->row, info->col, '^');
+		
 		/* move cursor back and output changes on the screen */
-		move(LINES-1, COLS-1);
-		refresh();
-		pthread_mutex_unlock(&draw);
+		unlock_draw();
 		
 		/* if reach the top of the screen without hitting anything */
 		if(info->row < 0){
@@ -716,6 +784,11 @@ void *shots(void *properties){
 	}
 }
 
+
+/* 
+ * print the introduction message
+ * expects no arguments, returns zero when complete
+ */
 int welcome(){
 	
 	struct message{
@@ -724,9 +797,14 @@ int welcome(){
 	};
 	
 	int c, i, j;
-	int number = 10;
-	struct message mes[number];
+	int row = LINES/2 - LINES/4;
+	int col = COLS/2 - COLS/3;
 	
+	/* number of words in words array */
+	int len = 10;
+	struct message mes[len];
+	
+	/* sentences to print */
 	char *words[10] = {
 	"Aliens are trying to invade your homeland!!!! :O",
 	"In order to stop them you must shoot down their saucers from the sky.",
@@ -740,50 +818,58 @@ int welcome(){
 	"If you want to quit the game at any time press 'Q'."
 	};
 	
-	for(i = 0; i < number; i++){
+	/* populate the message array */
+	for(i = 0; i < len; i++){
 		mes[i].word = words[i];
 		mes[i].length = strlen(words[i])+1;
 	}
 	
-	
-	mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "Welcome to SAUCER!");
-	
-	mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3,
-	 "Press '.' to view the rest of the instructions");
-	mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3,
-	 "Or press space to skip the instructions and start playing");
+	/* print intro on screen */
+	mvprintw(row, col, "Welcome to SAUCER!");
+	mvprintw(row+2, col, "Press '.' to view the rest of the instructions");
+	mvprintw(row+3, col,"Press space to skip instructions & start playing");
 	refresh();
 	
+	/* print instructions */
 	while(1){
 		c = getch();
 		if(c == '.'){
 			erase();
-			mvaddstr(LINES-2, 0,
-			 "Press '.' to continue instructions");
-			mvaddstr(LINES-1, 0,
-			 "Press any other key to begin the game");
-			for(i=0;i<number;i++){
-				
+			mvaddstr(LINES-2, 0, "Press '.' to continue reading");
+			mvaddstr(LINES-1,0,"Press any other key to begin game");
+			
+			/* print each line character by character */
+			for(i=0;i<len;i++){
 				for(j=1; j<mes[i].length; j++){
 					mvaddnstr(i+1, 0, mes[i].word, j);
 					refresh();
+					
+					/* pause to get the effect of typing */
 					usleep(10000);
 				}
+				
+				/* exit the welcome function by user request */
 				c = getch();
 				if(c != '.'){
 					erase();
+					move(LINES-1,COLS-1);
 					return 0;
 				}
 			}
+			
+			/* last message */
 			erase();
-			mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3,
-			"(Press any key to start the game)");
+			mvprintw(row+3,col,"(Press any key to start the game)");
+			
+			/* read in any input to signal exit function */
 			c = getch();
 			erase();
 			move(LINES-1,COLS-1);
 			return 0;
 			
 		}
+		
+		/* if user chooses to skip instructions */
 		else if (c == ' '){
 			erase();
 			move(LINES-1,COLS-1);
