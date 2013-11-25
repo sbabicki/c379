@@ -18,3 +18,9 @@ Condition Variables
 
 game specifics 
 	rand & srand for speed and row
+	
+	
+	describe the overall structure of your code
+	describe the threads used by your code and what their jobs are
+	describe the critical sections, i.e. the sharing of data structures between your threads (which data are shared, who accesses them, and how they are protected)
+	describe the user interface to your game - including your reasons for making particular decisions about it. Note - your TA should be able to read your design documentation and then know how to read your code and play the game.
