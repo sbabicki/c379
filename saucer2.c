@@ -27,12 +27,12 @@
 #define	NUMSAUCERS 5
 
 /* number of initial shots limit */
-#define NUMSHOTS 5
+#define NUMSHOTS 20
 
 /* the maximum number of saucers at one time */
 #define MAXSAUCERS 10
 
-#define MAXESCAPE 3
+#define MAXESCAPE 50
 
 /* the maximum number of shot threads */
 #define MAXSHOTS 50
@@ -121,7 +121,7 @@ int main(int ac, char *av[]){
 	void *replace_thread();
 	int launch_site();
 	void setup_saucer();
-	void welcome();
+	int welcome();
 	void *process_input();
 
         /* number of saucers */
@@ -261,7 +261,6 @@ void *process_input(){
 	void *replace_thread();
 	int launch_site();
 	void setup_saucer();
-	void welcome();
 	
 	/* print message with info about the game @ the bottom of the page */
 	stats();
@@ -307,6 +306,9 @@ void *process_input(){
 
 		/* quit program */
 		if(c == 'Q'){
+			pthread_mutex_lock(&end_mutex);
+			pthread_cond_signal(&end_condition);
+			pthread_mutex_unlock(&end_mutex);
 			break;
 		}
 		
@@ -369,7 +371,9 @@ void stats( ){
 	/* print message at bottom of the screen */
 	pthread_mutex_lock(&draw);
 	move(LINES-1, COLS-1);
-	mvprintw(LINES-1,0,"score:%d, rockets remaining: %d, escaped saucers: %d", score_update, shot_update, escape_update);
+	mvprintw(LINES-1,0,
+	"score:%d, rockets remaining: %d, escaped saucers: %d/%d    ", 
+	score_update, shot_update, escape_update, MAXESCAPE);
 	move(LINES-1, COLS-1);
 	refresh();
 	pthread_mutex_unlock(&draw);
@@ -405,14 +409,12 @@ void *saucers(void *properties){
 	
 	while(1){
 		
-		
 		/* thread sleeps for (its delay time * defined timeunits) */
 		usleep(info->delay*TUNIT);
 
 		/* lock the mutex draw CRITICAL REGION BELOW */
 		pthread_mutex_lock(&draw);
 		move(LINES-1, COLS-1);
-		
 		
 		/* remove the saucer if kill is set for that saucer */
 		if(info->kill == 1){
@@ -706,37 +708,78 @@ void *shots(void *properties){
 	}
 }
 
-void welcome(){
-	int c; 
+int welcome(){
+	
+	struct message{
+		char *word;
+		int length;
+	};
+	
+	int c, i, j;
+	int number = 10;
+	struct message mes[number];
+	
+	char *words[10] = {
+	"Aliens are trying to invade your homeland!!!! :O",
+	"In order to stop them you must shoot down their saucers from the sky.",
+	"You only have a set number of rockets so use them wisely.",
+	"The game will end if you run out of rockets.",
+	"The game will also end if you let too many saucers escape.",
+	"Each saucer you shoot down will give you one new rocket.",
+	"Information about your score is printed at the bottom of the page.",
+	"Press space to shoot a rocket.",
+	"Press ',' to move your launchpad right, and '.' to move it left.",
+	"If you want to quit the game at any time press 'Q'."
+	};
+	
+	for(i = 0; i < number; i++){
+		mes[i].word = words[i];
+		mes[i].length = strlen(words[i])+1;
+	}
+	
 	
 	mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "Welcome to SAUCER!");
 	
-	mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "Press '.' to view the rest of the instructions");
-	mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3, "Or press space to skip the instructions and start playing");
+	mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3,
+	 "Press '.' to view the rest of the instructions");
+	mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3,
+	 "Or press space to skip the instructions and start playing");
 	refresh();
 	
 	while(1){
 		c = getch();
 		if(c == '.'){
-			mvprintw(LINES/2 - LINES/4, COLS/2 - COLS/3, "Aliens are trying to invade your homeland!!!!");
-			mvprintw(LINES/2 - LINES/4 +1, COLS/2 - COLS/3, "In order to stop them you must shoot down their saucers from the sky");
-			mvprintw(LINES/2 - LINES/4 +2, COLS/2 - COLS/3, "You only have a set number of rockets so use them wisely");
-			mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3, "The game will end when you have run out of rockets or if you have let too many saucers escape");
-			mvprintw(LINES/2 - LINES/4 +4, COLS/2 - COLS/3, "Each saucer you shoot down will give you one new rocket");
-			mvprintw(LINES/2 - LINES/4 +5, COLS/2 - COLS/3, "Information about your score is printed at the bottom of the page");
-			mvprintw(LINES/2 - LINES/4 +6, COLS/2 - COLS/3, "Press space to shoot, ',' to move your launchpad right, and '.' to move your launchpad left");
-			mvprintw(LINES/2 - LINES/4 +7, COLS/2 - COLS/3, "If you would like to quit the game at any time before you run out of rockets, press 'Q'");
-			mvprintw(LINES/2 - LINES/4 +10, COLS/2 - COLS/3, "(Press any key to start the game)");
-			refresh();
-			
+			erase();
+			mvaddstr(LINES-2, 0,
+			 "Press '.' to continue instructions");
+			mvaddstr(LINES-1, 0,
+			 "Press any other key to begin the game");
+			for(i=0;i<number;i++){
+				
+				for(j=1; j<mes[i].length; j++){
+					mvaddnstr(i+1, 0, mes[i].word, j);
+					refresh();
+					usleep(10000);
+				}
+				c = getch();
+				if(c != '.'){
+					erase();
+					return 0;
+				}
+			}
+			erase();
+			mvprintw(LINES/2 - LINES/4 +3, COLS/2 - COLS/3,
+			"(Press any key to start the game)");
 			c = getch();
 			erase();
-			break;
+			move(LINES-1,COLS-1);
+			return 0;
 			
 		}
 		else if (c == ' '){
 			erase();
-			break;
+			move(LINES-1,COLS-1);
+			return 0;
 		}
 	}
 	
