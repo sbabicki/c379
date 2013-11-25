@@ -1,12 +1,25 @@
 /*
- * tanimate.c: animate several strings using threads, curses, usleep()
+ * Comput 379 Assignment 3
+ * Sasha Babicki
+ * 1264274
  *
- *	bigidea one thread for each animated string
- *		one thread for keyboard control
- *		shared variables for communication
- *	compile	cc ass3.c -lcurses -lpthread -o ass3
- *	to do   needs locks for shared variables
- *	        nice to put screen handling in its own thread
+ * saucer.c is an animated terminal based game using curses and threads
+ *
+ * Threads:
+ *	one thread for keyboard control
+ *	one thread for each saucer
+ *	one thread for each shot
+ *	one thread for replacing saucers once they are finished
+ *
+ * Mutex/Condition Variables:
+ * 	drawing on the screen
+ *	replacing a thread
+ *	updating the score
+ *	calling for the program to exit
+ *
+ * Compile:
+ *	cc saucer.c -lcurses -lpthread -o saucer
+ *	
  */
 
 #include <stdio.h>
