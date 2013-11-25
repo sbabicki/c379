@@ -1,3 +1,4 @@
+STRUCTURE/FLOW OF CODE: describe the overall structure of your code
 FUNCTIONS
 	int main();
 	void lock_draw();
@@ -15,12 +16,17 @@ FUNCTIONS
 	void *shots();
 	int fire_shot();
 	void find_hit();
+
+PROGRAM FLOW DESCRIPTION
 	
-STRUCTURE/FLOW OF CODE: describe the overall structure of your code
+	
+
+
 	
 Collision Detection
-	collision_position[][] array
-	saucerinfo.there[] to record index of present saucers
+GLOBAL VARIABLES
+	collision_position[ ][ ] array
+	saucerinfo.there[ ] to record index of present saucers
 	saucerinfo->kill signal
 
 THREADS
@@ -60,11 +66,9 @@ CONDITION VARIABLES
 		
 
 GAME SPECIFICS
-describe the user interface to your game - 
-including your reasons for making particular decisions about it.
-Note - your TA should be able to read your design documentation and 
-then know how to read your code and play the game.
-	Random variable creation: rand() with seed set by srand(getpid)
+-if hit multiple saucers per row get one point for each saucer, and one new saucer for each saucer
+-random speed/row 	for increased user enjoyment 
+Random variable creation: rand() with seed set by srand(getpid)
 		Seed of get_pid() ensures that each game will have different rand() results each time it is played
 		rand() uses in game:
 			Saucer speed/row
@@ -72,3 +76,8 @@ then know how to read your code and play the game.
 			Random saucer creation
 				process_input: the more key presses by the user, the more likely it is for a random saucer to be created
 	
+describe the user interface to your game - 
+including your reasons for making particular decisions about it.
+Note - your TA should be able to read your design documentation and 
+then know how to read your code and play the game.
+
