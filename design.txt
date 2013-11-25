@@ -15,6 +15,35 @@ Functions
 	int welcome();
 	
 	
+	void lock_draw();
+	void unlock_draw();
+	
+	void setup_saucer();
+	void stats();
+	int launch_site();
+	int welcome(); 
+	
+	
+	void saucer_hit();
+	void new_saucer_position();
+	void *saucers();
+	int rand_saucers();
+	
+	void *replace_thread();
+	
+	
+	void *process_input();
+	
+	void *shots();
+	int fire_shot();
+	void find_hit();
+	
+	int main();
+	
+	
+	
+	
+	
 	
 Collision detection
 	kill signal
