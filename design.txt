@@ -1,70 +1,83 @@
-Functions
+STRUCTURE/FLOW OF CODE: describe the overall structure of your code
+FUNCTIONS
 	int main();
-	void *process_input();
-	int rand_saucers();
-	int fire_shot();
-	void stats();
-	void setup_saucer();
-	void saucer_hit();
-	void new_saucer_position();
-	void *saucers();
-	void *replace_thread();
-	int launch_site();
-	void find_hit();
-	void *shots();
-	int welcome();
-	
-	
 	void lock_draw();
 	void unlock_draw();
-	
 	void setup_saucer();
 	void stats();
 	int launch_site();
 	int welcome(); 
-	
-	
 	void saucer_hit();
 	void new_saucer_position();
 	void *saucers();
 	int rand_saucers();
-	
 	void *replace_thread();
-	
-	
 	void *process_input();
-	
 	void *shots();
 	int fire_shot();
 	void find_hit();
-	
-	int main();
-	
-	
-	
-	
-	
-	
-Collision detection
-	kill signal
 
-Threads
-	//replace etc
-	thread storage arrays 
+PROGRAM FLOW DESCRIPTION
+	
+	
+
+
+	
+Collision Detection
+GLOBAL VARIABLES
+	collision_position[ ][ ] array
+	saucerinfo.there[ ] to record index of present saucers
+	saucerinfo->kill signal
+
+THREADS
+describe the threads used by your code and what their jobs are
+	main()
+	replace_thread()
+	process_input()
+	saucers()
+	shots()
+	
+	Thread storage arrays 
 		replace for the saucers
 		looping for the shots array
+
+CRITICAL SECTIONS	
+describe the critical sections, i.e. the sharing of data structures between your threads 
+(which data are shared, who accesses them, and how they are protected)
+MUTEXES
+	draw
+		used to protect any code that updates the screen
+	score_mutex
+		used to protect the score global variables: shot_update, score_update, escape_update
+	shot_mutex
+		used to protect updates to shot_update value
+	replace_mutex
+		used to protect the replace_index global variable
+		used with the replace_condition condition variable to signal replacement thread creation
+	end_mutex
+		used with the end_condition condition variable to exit program
+
+CONDITION VARIABLES
+	replace_condition
+		used to send signal that a thread should be replaced right before the thread exits
+	end_condition
+		used to let the main function know to close all threads and exit the program
+		
+		
+
+GAME SPECIFICS
+-if hit multiple saucers per row get one point for each saucer, and one new saucer for each saucer
+-random speed/row 	for increased user enjoyment 
+Random variable creation: rand() with seed set by srand(getpid)
+		Seed of get_pid() ensures that each game will have different rand() results each time it is played
+		rand() uses in game:
+			Saucer speed/row
+				setup_saucer: used to randomize the speed and the row of each saucer thread
+			Random saucer creation
+				process_input: the more key presses by the user, the more likely it is for a random saucer to be created
 	
+describe the user interface to your game - 
+including your reasons for making particular decisions about it.
+Note - your TA should be able to read your design documentation and 
+then know how to read your code and play the game.
 
-Mutexes
-
-Condition Variables
-
-
-game specifics 
-	rand & srand for speed and row
-	
-	
-	describe the overall structure of your code
-	describe the threads used by your code and what their jobs are
-	describe the critical sections, i.e. the sharing of data structures between your threads (which data are shared, who accesses them, and how they are protected)
-	describe the user interface to your game - including your reasons for making particular decisions about it. Note - your TA should be able to read your design documentation and then know how to read your code and play the game.
