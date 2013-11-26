@@ -35,16 +35,16 @@
 
 /* ~~~~ CHANGABLE MACROS: ~~~~*/
 /* the maximum number of rows with saucers on them */
-#define NUMROW 4
+#define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 3
+#define	NUMSAUCERS 4
 
 /* the maximum number of saucers on screen at one time */
 #define MAXSAUCERS 6
 
 /* the maximum number of escaped saucers */
-#define MAXESCAPE 15
+#define MAXESCAPE 1500
 
 /* higher number = less likely to have random saucers appear */
 #define RANDSAUCERS 50
@@ -165,7 +165,7 @@ int main(int ac, char *av[]){
 	
 	/* make sure the system allows enough processes to play the game */
 	getrlimit(RLIMIT_NPROC, &rlim);
-	if (rlim.rlim_cur < MAXSAUCERS + MAXSHOTS + 3){
+	if (rlim.rlim_cur < MAXSAUCERS + MAXSHOTS + 4){
 		fprintf(stderr,
 		"Your system does not allow enough processes for this game\n");
 		exit(-1);
@@ -311,7 +311,8 @@ void setup_saucer(int i){
 	saucerinfo[i].index = i;
 }
 
-
+ 
+ 
 /* 
  * stats prints the # of rockets left and # of missed saucers on the screen
  * uses the draw mutex so draw must be unlocked before entering stats
@@ -319,12 +320,10 @@ void setup_saucer(int i){
  * expects no args & no return values
  */
 void stats(){
-		
+
 	/* print message at bottom of the screen */
 	lock_draw();
-	mvprintw(LINES-1,0,
-	    "score:%d, rockets remaining: %d, escaped saucers: %d/%d    ",
-	    score_update, shot_update, escape_update, MAXESCAPE);
+	mvprintw(LINES-1, 0, " score: %d, rockets remaining: %d, escaped saucers: %d/%d", score_update, shot_update, escape_update, MAXESCAPE);
 
 	unlock_draw();
 }
@@ -647,8 +646,10 @@ void *shots(void *properties){
 		
 		lock_draw();
 		
-		/* cover the old shot */
-		mvaddch(info->row, info->col, ' ');
+		/* cover the old shot if no saucer has moved there */
+		if(collision_position[info->row][info->col].saucer == 0){
+			mvaddch(info->row, info->col, ' ');
+		}
 		
 		/* remove the old position from the collision array */
 		if( info->row >= 0 && info->row < LINES-1){
