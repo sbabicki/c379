@@ -10,11 +10,13 @@
  *	one thread for each saucer
  *	one thread for each shot
  *	one thread for replacing saucers once they are finished
+ * 	one thread for each time monitoring a possible last shot
  *
  * Mutex/Condition Variables:
  * 	drawing on the screen
  *	replacing a thread
  *	updating the score
+ * 	updating the number of shots
  *	calling for the program to exit
  *
  * Compile:
@@ -33,16 +35,16 @@
 
 /* ~~~~ CHANGABLE MACROS: ~~~~*/
 /* the maximum number of rows with saucers on them */
-#define NUMROW 2
+#define NUMROW 4
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 5
+#define	NUMSAUCERS 3
 
 /* the maximum number of saucers on screen at one time */
-#define MAXSAUCERS 10
+#define MAXSAUCERS 6
 
 /* the maximum number of escaped saucers */
-#define MAXESCAPE 50
+#define MAXESCAPE 15
 
 /* higher number = less likely to have random saucers appear */
 #define RANDSAUCERS 50
@@ -82,6 +84,10 @@ struct screen{
 	int here[MAXSAUCERS];
 };
 
+/* for storing the properties of saucers and shots */
+struct saucerprop saucerinfo[MAXSAUCERS];
+struct shotprop shotinfo[MAXSHOTS];
+
 /* collision detection array */
 struct screen **collision_position;
 
@@ -107,10 +113,26 @@ pthread_mutex_t end_mutex = PTHREAD_MUTEX_INITIALIZER;
 /* arrays to store the threads */
 pthread_t saucer_t[MAXSAUCERS];
 pthread_t shot_t[MAXSHOTS];
+pthread_t end_t;
 
-/* for storing the properties of saucers and shots */
-struct saucerprop saucerinfo[MAXSAUCERS];
-struct shotprop shotinfo[MAXSHOTS];
+/* function prototypes */
+void lock_draw();
+void unlock_draw();
+void setup_saucer();
+void stats();
+int launch_site();
+void saucer_hit();
+void new_saucer_position();
+void *saucers();
+int rand_saucers();
+void *replace_thread();
+void find_hit();
+void *shots();
+void *find_end();
+int fire_shot();
+void *process_input();
+int welcome(); 
+
 
 /*
  * main does some simple error checking and setup as well as some closing tasks
@@ -134,24 +156,6 @@ int main(int ac, char *av[]){
 	/* for creating the 2D array used for collision detection */
 	struct screen **array;
 	struct screen *data;
-	
-	/* function prototypes */
-	void lock_draw();
-	void unlock_draw();
-	void setup_saucer();
-	void stats();
-	int launch_site();
-	void saucer_hit();
-	void new_saucer_position();
-	void *saucers();
-	int rand_saucers();
-	void *replace_thread();
-	void find_hit();
-	void *shots();
-	int fire_shot();
-	void *process_input();
-	int welcome(); 
-	
 
 	/* no arguments should be included for this program */
 	if (ac != 1){
@@ -217,14 +221,15 @@ int main(int ac, char *av[]){
 	pthread_cond_wait(&end_condition, &end_mutex);
 	
 	/* cancel all threads so they no longer update */
-	pthread_cancel(replace_t);
-	pthread_cancel(input_t);
 	for(i=0; i<MAXSAUCERS; i++){
 		pthread_cancel(saucer_t[i]);
 	}
 	for(i=0; i<MAXSHOTS; i++){
 		pthread_cancel(shot_t[i]);
 	}
+	pthread_cancel(replace_t);
+	pthread_cancel(input_t);
+	pthread_cancel(end_t);
 	
 	/* erase everything on the screen in prep for closing message */
 	erase();
@@ -249,9 +254,9 @@ int main(int ac, char *av[]){
 	
 	/* closing message */
 	mvprintw(r_padding +1, c_padding, "Escaped saucers: %d", escape_update);
-	mvprintw(r_padding +2, c_padding, "Final score: %d", score_update);
-	mvprintw(r_padding +3, c_padding, "Thanks for playing!");
-	mvprintw(r_padding +4, c_padding, "NUm rockets: %d", shot_update);
+	mvprintw(r_padding +2, c_padding, "Rockets left: %d", shot_update);
+	mvprintw(r_padding +3, c_padding, "Final score: %d", score_update);
+	mvprintw(r_padding +4, c_padding, "Thanks for playing!");
 	mvprintw(r_padding +5, c_padding, "(Press 'Q' to exit)");
 	refresh();
 	
@@ -317,7 +322,6 @@ void stats(){
 		
 	/* print message at bottom of the screen */
 	lock_draw();
-	
 	mvprintw(LINES-1,0,
 	    "score:%d, rockets remaining: %d, escaped saucers: %d/%d    ",
 	    score_update, shot_update, escape_update, MAXESCAPE);
@@ -387,6 +391,7 @@ void saucer_hit(int len, int col, struct saucerprop *info, char *shape){
 
 /* 
  * new_saucer_position updates adds information in the collision array
+ * draw mutex should be locked before entering this function
  * expects a row, column, and index. returns nothing 
  */
 void new_saucer_position(int row, int col, int index){
@@ -605,8 +610,8 @@ void find_hit(int row, int col){
 	pthread_mutex_lock(&shot_mutex);
 	/* reward a hit with more shots */
 	shot_update = shot_update + hits; 
-	pthread_mutex_unlock(&shot_mutex);
 	stats();
+	pthread_mutex_unlock(&shot_mutex);
 	pthread_mutex_unlock(&score_mutex);
 }
 
@@ -631,8 +636,8 @@ void *shots(void *properties){
 	pthread_mutex_lock(&score_mutex);
 	pthread_mutex_lock(&shot_mutex);
 	shot_update --;
-	pthread_mutex_unlock(&shot_mutex);
 	stats();
+	pthread_mutex_unlock(&shot_mutex);
 	pthread_mutex_unlock(&score_mutex);
 
 	while(1){
@@ -685,6 +690,37 @@ void *shots(void *properties){
 }
 
 
+/*
+ * find_end waits for a shot thread to end and checks if the program can exit
+ * if the shot finishes without hitting anything the program can exit
+ * otherwise more shots are available and the game can continue
+ * expects the thread id of the shot of interest, no return values
+ */
+void *find_end(void *shot_index){
+	
+	void *retval;
+	
+	/* when there is no chance of hitting any other saucers */
+	pthread_join(shot_index, &retval);
+	
+	sleep(2);
+	
+	/* if the last shot fired and misses: signal to exit game */
+	pthread_mutex_lock(&shot_mutex);
+	if(shot_update == 0){
+		
+		pthread_mutex_lock(&end_mutex);
+		pthread_cond_signal(&end_condition); 
+		pthread_mutex_unlock(&end_mutex);
+		pthread_exit(&retval);
+	}
+	
+	/* if the last shot does hit something go back to allowing new shots */
+	pthread_mutex_unlock(&shot_mutex);
+	pthread_exit(&retval);
+}
+
+
 /* 
  * fire shot creates a new shot
  * expects the current index of the shot_t array and the current launch position
@@ -694,42 +730,41 @@ int fire_shot(int index, int launch_position){
 	
 	void *retval;
 	
-
+	/* if we still have shots left create fire a new shot */
 	pthread_mutex_lock(&shot_mutex);
+	if(shot_update > 0){
+		pthread_mutex_unlock(&shot_mutex);
+	
+		/* loop to begining of the array to reuse indices */
+		if(index == MAXSHOTS-1){
+			index = 0;
+		}
+	
+		/* set row & col for the shot (pos+1 b/c of the space before|)*/
+		shotinfo[index].col = launch_position + 1;
+	
+		/* create a thread for the shot */
+		if(pthread_create(&shot_t[index], NULL, shots, &shotinfo[index])){
+			fprintf(stderr,"error creating shot thread\n");
+			endwin();
+			exit(-1);
+		}
+	}
+	pthread_mutex_unlock(&shot_mutex);
+	
 	/* may be 1 or 0, depending on where shot thread is at */
+	pthread_mutex_lock(&shot_mutex);
 	if(shot_update <= 1){
 		pthread_mutex_unlock(&shot_mutex);
 		
-		/* no chance of hitting any other saucers */
-		pthread_join(shot_t[index], &retval);
-		
-		pthread_mutex_lock(&shot_mutex);
-		/* if the last shot fired: signal to exit game */
-		if(shot_update == 0){
-			
-			pthread_mutex_lock(&end_mutex);
-			pthread_cond_signal(&end_condition); 
-			pthread_mutex_unlock(&end_mutex);
-			
-			return -1;
+		/* create a thread to wait for the last shot to finish */
+		if(pthread_create(&end_t, NULL, find_end, &shot_t[index])){
+			fprintf(stderr,"error creating shot thread\n");
+			endwin();
+			exit(-1);
 		}
-		pthread_mutex_unlock(&shot_mutex);
 	}
-	
-	/* loop to begining of the array */
-	if(index == MAXSHOTS-1){
-		index = 0;
-	}
-	
-	/* set row & col for the shot (pos + 1 b/c of the space before | )*/
-	shotinfo[index].col = launch_position + 1;
-	
-	/* create a thread for the shot */
-	if(pthread_create(&shot_t[index], NULL, shots, &shotinfo[index])){
-		fprintf(stderr,"error creating shot thread\n");
-		endwin();
-		exit(-1);
-	}
+	pthread_mutex_unlock(&shot_mutex);
 
 	/* move to next shot */
 	index ++;
@@ -807,24 +842,17 @@ void *process_input(){
 		
 		/* fire one shot */
 		else if(c == ' '){
-			pthread_mutex_lock(&shot_mutex);
+			
 			/* if we are not out of shots yet fire the next one */
+			pthread_mutex_lock(&shot_mutex);
 			if(shot_update >= 0){
 				pthread_mutex_unlock(&shot_mutex);
-				shot_i = fire_shot(shot_i, launch_position);
 				
-				/* fire_shot returns val<0 if no more shots */
-				if(shot_i < 0){
-					pthread_exit(retval);
-				}
+				/* fire_shot returns next shot index */
+				shot_i = fire_shot(shot_i, launch_position);
 			}
-			else{
-				pthread_mutex_lock(&end_mutex);
-				pthread_cond_signal(&end_condition); 
-				pthread_mutex_unlock(&end_mutex);
-				pthread_exit(retval);
-			}
-		}pthread_mutex_unlock(&shot_mutex);
+			pthread_mutex_unlock(&shot_mutex);
+		}
 	}
 	pthread_exit(retval);
 }
