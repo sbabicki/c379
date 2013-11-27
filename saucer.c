@@ -35,6 +35,7 @@
 
 /* ~~~~ CHANGABLE MACROS: ~~~~*/
 /* the maximum number of rows with saucers on them */
+/* RESTRICTION: cannot be > LINES - 3 		   */
 #define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
@@ -923,6 +924,33 @@ void *process_input(){
 			break;
 		}
 		
+		/* pausing the game: an intentional use of deadlock!! */
+		else if(c == 'p'){
+			
+			/* stop anything from being drawn on the screen */
+			lock_draw();
+			
+			/* print message letting user know game is paused */
+			mvprintw(10, 10, "PAUSED");
+			mvprintw(11, 10, "(press 'p' to resume)");
+			refresh();
+			
+			/* wait for user to press 'p' to resume game */
+			while(1){
+				c = getch();
+				if (c == 'p'){
+					
+					/* cover pause message and return */
+					mvprintw(10,10,"      ");
+					mvprintw(11,10,"                     ");
+					refresh();
+					break;
+				}
+			}
+			
+			/* stop deadlock */
+			unlock_draw();
+		}
 		/* toggle turning colour on or off */
 		else if(c == 'c'){
 			
@@ -981,11 +1009,11 @@ int welcome(){
 	int col = COLS/2 - COLS/3;
 	
 	/* number of words in words array */
-	int len = 11;
+	int len = 12;
 	struct message mes[len];
 	
 	/* sentences to print */
-	char *words[11] = {
+	char *words[12] = {
 	"Aliens are trying to invade your homeland!!!! :O",
 	"In order to stop them you must shoot down their saucers from the sky.",
 	"You only have a set number of rockets so use them wisely.",
@@ -996,6 +1024,7 @@ int welcome(){
 	"Press space to shoot a rocket.",
 	"Press ',' to move your launchpad right, and '.' to move it left.",
 	"Press 'c' to toggle colours on or off.",
+	"Press 'p' to pause or resume the game.",
 	"If you want to quit the game at any time press 'Q'."
 	};
 	
