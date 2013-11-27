@@ -40,8 +40,8 @@
 /* number of initial saucers to display at the start of the program */
 #define	NUMSAUCERS 5
 
-/* the maximum number of saucers on screen at one time */
-/* RESTRICTION: must be >= NUMSAUCERS */
+/* the maximum number of saucers on screen at one time 	*/
+/* RESTRICTION: must be >= NUMSAUCERS 			*/
 #define MAXSAUCERS 8
 
 /* the maximum number of escaped saucers */
@@ -56,16 +56,20 @@
 /* delay for the saucers, higher number = slower saucers. 20000 recomended */
 #define	SAUCERSPEED 20000
 
-/* delay of the shots, higher number = slower shots. 60000 recomended */
+/* delay of the shots, higher number = slower shots. 60000 recomended 	  */
+/* RESTRICTION: be sure to adjust MAXSHOTS to a higher number if changing */
+/* SHOTSPEED to be very fast 						  */
 #define SHOTSPEED 60000
 /* ~~~~ END CHANGABLE MACROS ~~~~ */
 
-/* the maximum number of shot threads */
-#define MAXSHOTS 50
+/* the maximum number of shot threads. 50 recomended for average window size */
+/* RESTRICTION: if the window size is very large be sure to increase this #! */
+#define MAXSHOTS 100
 
 struct saucerprop{
 	int row;	
 	int delay;
+	int colour;
 		
 	/* element # in thread array */
 	int index;
@@ -102,6 +106,10 @@ int replace_index;
 
 /* saves the most up to date shot index */
 int save;
+
+/* screen colour variables */
+int use_colour;
+int next_colour;
 
 /* condition variables */
 pthread_cond_t replace_condition = PTHREAD_COND_INITIALIZER;
@@ -188,6 +196,25 @@ int main(int ac, char *av[]){
 	noecho();
 	clear();
 	
+	/* if we can't use colour set use_colour global variable to false */
+	if(has_colors() == FALSE){	
+		use_colour = 0;
+	}
+	
+	/* if we can use colour set use_colour to true and start colour */
+	else{
+		use_colour = 1;
+		start_color();
+		
+		/* initialize colour codes */
+		init_pair(1, COLOR_RED, COLOR_BLACK);
+		init_pair(2, COLOR_GREEN, COLOR_BLACK);
+		init_pair(3, COLOR_BLUE, COLOR_BLACK);
+		init_pair(4, COLOR_CYAN, COLOR_BLACK);
+		init_pair(5, COLOR_MAGENTA, COLOR_BLACK);
+		init_pair(6, COLOR_YELLOW, COLOR_BLACK);
+	}
+	
 	/* print opening message with instructions */
 	welcome();
 	
@@ -214,7 +241,7 @@ int main(int ac, char *av[]){
 	
 	/* create a thread for handling user input */
 	if (pthread_create(&input_t, NULL, process_input, NULL)){
-		fprintf(stderr,"error creating saucer thread\n");
+		fprintf(stderr,"error creating input processing thread\n");
 		endwin();
 		exit(-1);
 	}
@@ -272,6 +299,8 @@ int main(int ac, char *av[]){
 	while(1){
 		c = getch();
 		if(c == 'Q'){
+			erase();
+			refresh();
 			break;
 		}
 	}
@@ -313,10 +342,18 @@ void setup_saucer(int i){
 	saucerinfo[i].row = (rand())%NUMROW;
 	saucerinfo[i].delay = 1+(rand()%15);
 	saucerinfo[i].index = i;
+	saucerinfo[i].colour = next_colour;
+	
+	/* loop colours */
+	if(next_colour == 6){
+		next_colour = 0;
+	}
+	else{
+		next_colour ++;
+	}	
 }
 
- 
- 
+
 /* 
  * stats prints the # of rockets left and # of missed saucers on the screen
  * uses the draw mutex so draw must be unlocked before entering stats
@@ -327,7 +364,9 @@ void stats(){
 
 	/* print message at bottom of the screen */
 	lock_draw();
-	mvprintw(LINES-1, 0, " score: %d, rockets remaining: %d, escaped saucers: %d/%d", score_update, shot_update, escape_update, MAXESCAPE);
+	mvprintw(LINES-1, 0, 
+	    " score: %d, rockets remaining: %d, escaped saucers: %d/%d", 
+	    score_update, shot_update, escape_update, MAXESCAPE);
 
 	unlock_draw();
 }
@@ -415,7 +454,7 @@ void new_saucer_position(int row, int col, int index){
  */
 void *saucers(void *properties){	
 	
-	int i;	
+	int i;
 	void *retval;
 	char *shape = " <--->";
 	char *shape2= "      ";
@@ -423,6 +462,7 @@ void *saucers(void *properties){
 	int len = strlen(shape);
 	int len2 = len;
 	int col = 0;
+	
 	
 	/* points to properties info for a specific saucer */
 	struct saucerprop *info = properties;
@@ -446,6 +486,13 @@ void *saucers(void *properties){
 		/* lock the draw mutex CRITICAL REGION BELOW */
 		lock_draw();
 		
+		/* set colour only if the global use_colour is set to 1 */
+		if(use_colour){
+			
+			/* change colour of terminal */
+			attron(COLOR_PAIR(info->colour));
+		}
+		
 		/* if not overlapping */
 		if(collision_position[info->row][col].saucer <= 1){
 			
@@ -457,6 +504,13 @@ void *saucers(void *properties){
 		else{
 			/* print saucer without the padding at the end */
 			mvaddnstr(info->row, col+1, shape3, len2-1);
+		}
+		
+		/* unset colour only if the global use_colour is set to 1 */
+		if(use_colour){
+			
+			/* change colour back to default */
+			attroff(COLOR_PAIR(info->colour));
 		}
 		
 		/* update collision array. col+1 because of the extra space */
@@ -869,6 +923,20 @@ void *process_input(){
 			break;
 		}
 		
+		/* toggle turning colour on or off */
+		else if(c == 'c'){
+			
+			/* set use_colour to the opposite of what it is now */
+			lock_draw();
+			if (use_colour){
+				use_colour = 0;
+			}
+			else{
+				use_colour = 1;
+			}
+			unlock_draw();
+		}
+		
 		/* move launch site to the left */
 		else if(c == ','){
 			launch_position = launch_site(-1, launch_position);
@@ -913,11 +981,11 @@ int welcome(){
 	int col = COLS/2 - COLS/3;
 	
 	/* number of words in words array */
-	int len = 10;
+	int len = 11;
 	struct message mes[len];
 	
 	/* sentences to print */
-	char *words[10] = {
+	char *words[11] = {
 	"Aliens are trying to invade your homeland!!!! :O",
 	"In order to stop them you must shoot down their saucers from the sky.",
 	"You only have a set number of rockets so use them wisely.",
@@ -927,6 +995,7 @@ int welcome(){
 	"Information about your score is printed at the bottom of the page.",
 	"Press space to shoot a rocket.",
 	"Press ',' to move your launchpad right, and '.' to move it left.",
+	"Press 'c' to toggle colours on or off.",
 	"If you want to quit the game at any time press 'Q'."
 	};
 	
