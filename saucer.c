@@ -38,11 +38,11 @@
 #define NUMROW 3
 
 /* number of initial saucers to display at the start of the program */
-#define	NUMSAUCERS 5
+#define	NUMSAUCERS 3
 
 /* the maximum number of saucers on screen at one time 	*/
 /* RESTRICTION: must be >= NUMSAUCERS 			*/
-#define MAXSAUCERS 8
+#define MAXSAUCERS 6
 
 /* the maximum number of escaped saucers */
 #define MAXESCAPE 20
