@@ -20,7 +20,7 @@
  *	calling for the program to exit
  *
  * Compile:
- *	cc saucer.c -lcurses -lpthread -o saucer
+ *	gcc saucer.c -lcurses -lpthread -o saucer
  *	
  */
 
@@ -33,7 +33,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-/* ~~~~ CHANGABLE MACROS: ~~~~*/
 /* the maximum number of rows with saucers on them */
 /* RESTRICTION: cannot be > LINES - 3 		   */
 #define NUMROW 3
@@ -61,7 +60,6 @@
 /* RESTRICTION: be sure to adjust MAXSHOTS to a higher number if changing */
 /* SHOTSPEED to be very fast 						  */
 #define SHOTSPEED 60000
-/* ~~~~ END CHANGABLE MACROS ~~~~ */
 
 /* the maximum number of shot threads. 50 recomended for average window size */
 /* RESTRICTION: if the window size is very large be sure to increase this #! */
@@ -366,7 +364,7 @@ void stats(){
 	/* print message at bottom of the screen */
 	lock_draw();
 	mvprintw(LINES-1, 0, 
-	    " score: %d, rockets remaining: %d, escaped saucers: %d/%d", 
+	    " score: %d, rockets remaining: %d, escaped saucers: %d/%d        ", 
 	    score_update, shot_update, escape_update, MAXESCAPE);
 
 	unlock_draw();
